@@ -97,7 +97,7 @@ int main (int argc, char* argv[])
       //TH1F *dark_charges = new TH1F("Dark/Background Charge for PMT1","",5000,-150,200); 
       //TGraphErrors *Dark_Graph = new TGraphErrors;
       
-      TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",100000,-1,1); 
+      TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",5000,-1.0,1.0); 
       TH1F *big_noise_voltages =  new TH1F("Voltages over Signal Window for Trigger PMT","",5000,-1.0,1.0);
       TH1F *big_noise_charges =  new TH1F("Signal Charge for Trigger PMT","",5000,-150,200); 
       TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", 1252, 0, 252); 
@@ -368,7 +368,7 @@ int main (int argc, char* argv[])
 
       // spe fit 
       Int_t begin_spe_peak = 1.0; 
-      Int_t end_spe_peak = 5.0; 
+      Int_t end_spe_peak = 10.0; 
       Int_t first_bin = axis->FindBin(begin_spe_peak); 
       Int_t last_bin = axis->FindBin(end_spe_peak); 
       Double_t charge_finder[last_bin - first_bin];
@@ -420,11 +420,31 @@ int main (int argc, char* argv[])
       Double_t p111=myfunc3->GetParameter(1); 
       Double_t p222=myfunc3->GetParameter(2);
       charges_noise->Draw(); 
-      c1->Update();   
-  
+      c1->Update(); 
+
+      Double_t Low_charge_counter = axis->FindBin(p22); // count number of entries above the electronic noise width
+      Double_t High_charge_counter = axis->FindBin(p1 + 3*p2); // count number of entries 3 sigma above the charge peak 
+      Double_t low_charge_entry = 0.0; 
+      Double_t high_charge_entry = 0.0; 
+      Double_t Low_bin_counter = Low_charge_counter; 
+      Double_t High_bin_counter = High_charge_counter; 
+           
+      for(i = Low_bin_counter; i < Low_bin_counter + 1000; i++)
+	{
+	  low_charge_entry = low_charge_entry + charges_noise->GetBinContent(Low_charge_counter); 
+	  Low_charge_counter++;
+	}
+
+      for(i = High_bin_counter; i < High_bin_counter + 1000; i++)
+	{
+	  high_charge_entry = high_charge_entry + charges_noise->GetBinContent(High_charge_counter);
+	  High_charge_counter++;
+	}
+	  
       cout << "Electronic Noise Width is " << p22 << endl; 
       cout << "The Charge Peak is " << p1 << endl; 
       cout << "The Charge FWHM is " << p2*2*sqrt(2*log(2)) << endl; 
+      cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl; 
       
       chargefile.close(); 
 
