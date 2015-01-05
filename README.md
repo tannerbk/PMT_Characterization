@@ -1,4 +1,4 @@
 PMT_Characterization
 ====================
 
-PMT characterization code
+After fetching traces from the scope, this code loops through those traces and calculates the charge spectra. It writes the charge histogram, as well as many others to a root file. Syntax to run the code: ./PMTANALYSIS_C textfile.txt histo.root 626. textfile.txt is a text file containing listing the hdf5 files for analysis. histo.root is where the histograms are written. 626 is the length of the pedestal window in time bins. For my data the time bins are 0.2 ns long and there are 1252 of them (250ns window) so using 626 uses the first half of the window to correct for the pedestal and the second half of the window to calculate the charge distribution of the signal. The other histograms include average waveforms for both channels and the pedestal corrections for both channels. The channels to analyze are hard coded in and can be easily changed. 

@@ -294,7 +294,7 @@ int main (int argc, char* argv[])
 	  file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File 
 	  ifs >> filename;
 
-	  dataset = file.openDataSet("channel1"); // open channel 3
+	  dataset = file.openDataSet("channel1"); // open channel 1
 	  // re-set for new channel 
 	  horiz_interval = dataset.openAttribute("horiz_interval");
 	  vertical_gain = dataset.openAttribute("vertical_gain");
