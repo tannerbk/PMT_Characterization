@@ -58,7 +58,7 @@ int main (int argc, char* argv[])
 {
   unsigned long window_width = atoi(argv[3]);
   const int termination_ohms = 50; 
-  //const unsigned int dark_count = 3; 
+
   try
     {
 
@@ -85,17 +85,13 @@ int main (int argc, char* argv[])
       TH1F *noise_variances = new TH1F("Variance over Signal Window","",500000,-0.1,1.0);
       TH1F *noise_pedestals = new TH1F("Pedestal for PMT1","",100000,-1,1); 
       TH1F *corrected_noise_pedestals = new TH1F("Corrected Pedestal for PMT1","",100000,-1,1);
-      TH1F *charges_noise = new TH1F("Signal Charge for PMT","",20000,-150,200);  
+      TH1F *charges_noise = new TH1F("Charge","",20000,-150,200);  
       TH1F *total_charges = new TH1F("Charge over Entire Window for PMT1","",5000,-150,200); 
       TH1F *acceptable_waveform = new TH1F("Acceptable Waveform","", 1252, 0, 252); 
       TH1F *pulse_waveform = new TH1F("Unacceptable Waveform","", 1252, 0, 252); 
       TH1F *average_waveform = new TH1F("Average Waveform PMT1","", 1252, 0, 252); 
       TH1F *waveform_hist = new TH1F("Avg Waveform Histogram","",10000,-0.05,0.05);     
 
-      //Dark rate stuff commented out 
-      //TH1F *dark_voltages = new TH1F("Voltages over Noise Window for Dark Pulses/Background on PMT1","",5000,-1.0,1.0);
-      //TH1F *dark_charges = new TH1F("Dark/Background Charge for PMT1","",5000,-150,200); 
-      //TGraphErrors *Dark_Graph = new TGraphErrors;
       
       TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",5000,-1.0,1.0); 
       TH1F *big_noise_voltages =  new TH1F("Voltages over Signal Window for Trigger PMT","",5000,-1.0,1.0);
@@ -106,22 +102,13 @@ int main (int argc, char* argv[])
       unsigned long i; 
       unsigned long j; 
       unsigned int window_count = 0.0;
-      unsigned int new_window_count = 0.0; 
-      //int dark_file_count = 0.0; 
+      unsigned int new_window_count = 0.0;  
       string filename; 
       H5File file; 
       DataSet dataset;
-      //unsigned int plus = 0.0; 
-      //Float_t dark_rate[dark_count]; 
-      //Float_t dark_rate_errorbars[dark_count]; 
-      //Float_t fake_time[dark_count]; 
+
       const unsigned long length_trace = 2502; 
       
-
-      //for (plus=0.0; plus<dark_count; plus++){ // this is used for dark rate graph
-      //	fake_time[plus] = plus;
-      //}
-
       // seperates file input 
       int g = 0; 
       int p = 0;
@@ -169,20 +156,17 @@ int main (int argc, char* argv[])
 	  // for PMT1
 	  double ncharge = 0.0; 
 	  double total_charge = 0.0; 
-	  //double dark_charge = 0.0; 
 	  float voltage = 0.0; 
 	  float noise_voltage = 0.0; 
 	  float window_voltage = 0.0; 
-	  //float dark_voltage = 0.0; 
 	  float variance = 0.0; 
 	  float noise_variance = 0.0;  
 	  float noise_pedestal = 0.0; 
 	  float corrected_noise_pedestal = 0.0; 
-	  //int darkrate = 0.0; 
 
 	  for (j = 0; j < datacluster->n_traces; j++){
 	    cout << "Analyzing trace " << j+1 << " out of " 
-		 <<datacluster->n_traces<< " total traces " << "for channel 3 ZN0112"<<'\r';
+		 <<datacluster->n_traces<< " total traces " << "for channel 3 ETL"<<'\r';
 	    cout.flush(); 
 
 	    Read_Trace(datacluster,j); 	    	    
@@ -190,8 +174,7 @@ int main (int argc, char* argv[])
 	  
 	    // initialize 
 	    ncharge = 0.0; 
-	    total_charge = 0.0; 
-	    //dark_charge = 0.0; 
+	    total_charge = 0.0;  
 	    variance = 0.0; 
 	    noise_variance = 0.0; 
 	    noise_voltage = 0.0; 	   
@@ -202,7 +185,7 @@ int main (int argc, char* argv[])
 	      variance = variance + voltage * voltage; 
 	    }
 	    
-	    if(variance < 0.00022) {
+	    if(variance < 0.00028) {
 	      corrected_noise_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy; 
 	      for(i = window_width; i < window_width + integrate_length ; i++){ // noise window
 		noise_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
@@ -210,12 +193,14 @@ int main (int argc, char* argv[])
 		noise_variance = noise_variance + noise_voltage * noise_voltage; 
 		ncharge = ncharge+(noise_voltage*((-1000.0*dx*1e9)/termination_ohms));
 	      }  
+	      
 	      for(i=0; i < window_length; i++){ // entire window 
 		window_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);  
 		window_voltages->Fill(window_voltage);
 		total_charge = total_charge + (window_voltage*((-1000.0*dx*1e9)/termination_ohms));
 		waveform_voltage[i] = waveform_voltage[i] + window_voltage; 
-	      }	    
+	      }	   
+	      
 	      for(i=0; i < window_length; i++){ // draws an acceptable trace 
 		acceptable_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
 	      }
@@ -227,18 +212,6 @@ int main (int argc, char* argv[])
 	      noise_variances->Fill(noise_variance); 
 	      corrected_noise_pedestals->Fill(corrected_noise_pedestal); 
 	    }
-	
-	    /*
-	    if(variance < 0.00022) {
-	      for(i = window_width; i < window_width + integrate_length; i++){ // noise window
-		dark_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
-		dark_voltages->Fill(dark_voltage);
-		dark_charge = dark_charge + (dark_voltage*((-1000.0*dx*1e9)/termination_ohms));
-	      }
-	      dark_charges->Fill(dark_charge);
-	      darkrate++;
-	    }
-	    */
 
 	    if(variance > 0.0004){
 	      for(i=0; i<window_length; i++){
@@ -251,28 +224,11 @@ int main (int argc, char* argv[])
 	    noise_pedestals->Fill(noise_pedestal);
 	  }
 
-	  /*
-	  dark_rate[dark_file_count] = darkrate/0.04; 
-	  dark_rate_errorbars[dark_file_count] = sqrt(darkrate)/0.04; 
-	  chargefile << "File " << dark_file_count << " has a dark rate of " << dark_rate[dark_file_count] << " with error size " << dark_rate_errorbars[dark_file_count] << endl; 
-	  dark_file_count++; 
-	  */
-
 	  file.close(); 
 	}
 	ifs.close(); 
       }
 
-      /*
-      // dark rate graph
-      TCanvas *c1 = new TCanvas("c1","Charge Cut Dark Rate",200,10,700,500);
-      Dark_Graph = new TGraphErrors(dark_count, fake_time, dark_rate, 0 , dark_rate_errorbars);
-      Dark_Graph->SetTitle("Charge Cut Dark Rate");
-      Dark_Graph->SetMarkerStyle(0);
-      Dark_Graph->SetMarkerColor(4);
-      Dark_Graph->Draw("AP*");
-      c1->Update(); 
-      */
  
       Float_t avg_waveform_voltage[length_trace];  
       for(i=0; i<length_trace; i++){ 
@@ -281,8 +237,8 @@ int main (int argc, char* argv[])
 	waveform_hist->Fill(avg_waveform_voltage[i]); 
       }
 
-      cout  << "\n The number of Traces accepted is " << window_count << " for the ZN0112 PMT." << endl;
-
+      cout  << "\n The number of Traces accepted is " << window_count << " for the ETL PMT." << endl;
+      
       for(p=0;p<1;p++){
 
 	ifstream ifs ( argv[1] , ifstream::in ); // Open File List Stream
@@ -294,7 +250,7 @@ int main (int argc, char* argv[])
 	  file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File 
 	  ifs >> filename;
 
-	  dataset = file.openDataSet("channel1"); // open channel 1
+	  dataset = file.openDataSet("channel3"); // open channel 1
 	  // re-set for new channel 
 	  horiz_interval = dataset.openAttribute("horiz_interval");
 	  vertical_gain = dataset.openAttribute("vertical_gain");
@@ -377,10 +333,9 @@ int main (int argc, char* argv[])
       Double_t max_charge = 0.0; 
       Double_t max_charge_entry = 0.0;
       Double_t first_bin2 = first_bin;       
-      chargefile << first_bin << " " << last_bin << endl;      
+      chargefile << "first bin " << first_bin << " last bin " << last_bin << endl;      
       while(first_bin < last_bin){
 	charge_finder[f] = charges_noise->GetBinContent(first_bin);
-	chargefile << charge_finder[f] << endl; 
 	if(charge_finder[f] > max_charge_entry){
 	  max_charge_entry = charge_finder[f]; 
 	  b = f; 
@@ -422,6 +377,8 @@ int main (int argc, char* argv[])
       charges_noise->Draw(); 
       c1->Update(); 
 
+
+
       Double_t Low_charge_counter = axis->FindBin(p22); // count number of entries above the electronic noise width
       Double_t High_charge_counter = axis->FindBin(p1 + 3*p2); // count number of entries 3 sigma above the charge peak 
       Double_t low_charge_entry = 0.0; 
@@ -440,6 +397,48 @@ int main (int argc, char* argv[])
 	  high_charge_entry = high_charge_entry + charges_noise->GetBinContent(High_charge_counter);
 	  High_charge_counter++;
 	}
+      
+      // make the statistics legend
+      TPaveStats *ptstats = new TPaveStats(0.6,0.6,0.98,0.98,"brNDC");
+      ptstats->SetName("stats");
+      ptstats->SetBorderSize(2);
+      ptstats->SetTextAlign(12);
+      ptstats->SetTextFont(42);
+      ptstats->SetTextSize(0.035);
+      ptstats->SetShadowColor(0);
+      
+      Double_t FWHM =  p2*2*sqrt(2*log(2));
+      Double_t HCT = high_charge_entry * 100 / low_charge_entry; 
+      
+      TString box_title = "Charge"; 
+      TText *text_t = ptstats->AddText(box_title);
+      text_t->SetTextSize(0.05); 
+      TString ent = Form("Entries = %.0f", charges_noise->GetEntries() );
+      text_t = ptstats->AddText(ent);
+      TString noise_t = Form("Electronics Noise Width = %.3f", p22);
+      text_t = ptstats->AddText(noise_t); 
+      TString peak_t = Form("Charge Peak = %.3f", p1);
+      text_t = ptstats->AddText(peak_t);
+      TString FWHM_t = Form("Charge FWHM = %.3f", FWHM); 
+      text_t = ptstats->AddText(FWHM_t);
+      TString HCT_t = Form("High Charge Tail = %.3f", HCT); 
+      text_t = ptstats->AddText(HCT_t); 
+
+      ptstats->SetOptStat(0);
+      ptstats->SetOptFit(0);
+      ptstats->SetFillColor(0);
+
+      charges_noise->GetListOfFunctions()->Add(ptstats);    
+      charges_noise->GetXaxis()->SetTitle("Charge (pC)");
+      charges_noise->GetXaxis()->SetTitleFont(42);
+      charges_noise->GetXaxis()->SetTitleColor(1);
+      charges_noise->GetXaxis()->SetLabelFont(42);
+      charges_noise->GetXaxis()->SetRangeUser(-5,10);
+      charges_noise->GetYaxis()->SetTitle("Events");
+      charges_noise->GetYaxis()->SetTitleOffset(1.2);
+      charges_noise->GetYaxis()->SetLabelFont(42);
+      charges_noise->GetYaxis()->SetTitleFont(42);
+      c1->Modified();
 	  
       cout << "Electronic Noise Width is " << p22 << endl; 
       cout << "The Charge Peak is " << p1 << endl; 
@@ -457,17 +456,14 @@ int main (int argc, char* argv[])
 	voltages->Write(); 
 	noise_voltages->Write(); 
 	window_voltages->Write();
-	//dark_voltages->Write(); 
 	variances->Write();
 	noise_variances->Write();
-	charges_noise->Write();  
+	charges_noise->Write();
 	total_charges->Write(); 
-	//dark_charges->Write(); 
 	acceptable_waveform->Write();
 	pulse_waveform->Write();
 	average_waveform->Write(); 
 	waveform_hist->Write();
-	//Dark_Graph->Write();
 	  
 	//PMT2
 	big_noise_pedestals->Write(); 
@@ -483,18 +479,15 @@ int main (int argc, char* argv[])
       delete voltages;
       delete noise_voltages; 
       delete window_voltages;
-      //delete dark_voltages; 
       delete variances; 
       delete noise_variances; 
-      delete charges_noise;
-      delete total_charges;
-      //delete dark_charges;  
+      delete charges_noise; 
+      delete total_charges;  
       delete acceptable_waveform; 
       delete pulse_waveform;
       delete average_waveform; 
       delete waveform_hist; 
-      //delete Dark_Graph; 
-      
+
       delete big_noise_pedestals; 
       delete big_noise_voltages; 
       delete big_noise_charges; 
