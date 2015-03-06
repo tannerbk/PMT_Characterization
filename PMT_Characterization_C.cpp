@@ -34,15 +34,34 @@ using namespace std;
 
 const int RANK_OUT = 2; // Data Rank
 
-const unsigned long length_trace = 2502;  
-const unsigned long number_entries = 1000000; 
-const unsigned long number_files = 1; 
-const int high_voltage = 1470; 
-std::string title ("ET PMT: D784 KFLB, 120");
+const unsigned long length_trace = 5002;  
+const unsigned long number_entries = 500000; 
+const unsigned long number_files = 2; 
+const unsigned long number_windows = 4; 
+const int high_voltage = 1218; 
+const unsigned long window_start = 699;
+const int length_late = 95; 
+const float variance_cut = 10.0; 
+const float charge_cut = 1.0; 
+
+//                       424 (farther)                                                     (335 - 365)
+//for(i = window_width + 399; i < window_width +  549; i++){ // signal window, etl intermediate (330 - 360)
+//for(i = window_width + 374; i < window_width +  524; i++){ // signal window, etl closer (325 - 355)
+//for(i = window_width + 324; i < window_width +  474; i++){ // for ham12 inch hqe pmts (315 - 345)
+//for(i = window_width + 299; i < window_width + 449; i++){ // for ham12 inch eqe pmts (310 - 340)
+// efficiency 849 is 335 (use for ETL pmt). 
+// efficiency 499 is 300  (use for both ham pmts)
+// efficienc 649 , 699
+//TString box_title = Form("ZN0116 12-inch HQE"); 
+//TString box_title = Form("ZT0072 10-inch HQE");
+TString box_title = Form("11 Inch ET PMT: D784 KFLB, 118"); 
+// variance 0.15e-3 ch4
+// variance 0.25e-3 ch2
+// variance 0.15e-3 ch3
 
 static double time_max_trig[number_files][number_entries] = {{ 0 }}; 
-static double time_max_trig2[number_files][number_entries] = {{ 0 }}; 
-static double delta_T[number_files][number_entries] = {{ 0 }}; 
+static double time_max_trig2[number_files][number_entries][number_windows] = {{{ 0 }}}; 
+static double delta_T[number_files][number_entries][number_windows] = {{{ 0 }}}; 
 
 struct DataCluster{
   DataSet *dataset; // Dataset pointer
@@ -67,12 +86,14 @@ int Read_Trace(DataCluster *datacluster, unsigned long trace_index);
 int main (int argc, char* argv[])
 {
   unsigned long window_width = atoi(argv[3]);
+  //const unsigned long high_voltage = atoi(argv[4]);
+  //TString box_title = argv[5]; 
   const int termination_ohms = 50; 
 
   try
     {
 
-      cout << title << endl; 
+      cout << box_title << endl; 
       // Attribute Variables
       Attribute horiz_interval;
       Attribute vertical_gain;
@@ -92,40 +113,56 @@ int main (int argc, char* argv[])
       TH1F *noise_voltages = new TH1F("Voltages over Signal Window for ETL PMT","",5000,-1.0,1.0);
       TH1F *variances = new TH1F("Variance over Pedestal Window for ETL PMT","",500000,-0.1,1.0);
       TH1F *charges_signal = new TH1F("Charge ETL PMT","",20000,-150,200);   
-      TH1F *acceptable_waveform = new TH1F("Acceptable Waveform ETL PMT","", 2502, 0, 502); 
-      TH1F *pulse_waveform = new TH1F("Unacceptable Waveform ETL PMT","", 2502, 0, 502); 
-      TH1F *average_waveform = new TH1F("Average Waveform ETL PMT","", 2502, 0, 502);  
+      TH1F *acceptable_waveform = new TH1F("Acceptable Waveform ETL PMT","", 5002, 0, 500.2); 
+      TH1F *pulse_waveform = new TH1F("Unacceptable Waveform ETL PMT","", 5002, 0, 500.2); 
+      TH1F *average_waveform = new TH1F("Average Waveform ETL PMT","", 5002, 0, 500.2);  
       
       TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",100000,-1.0,1.0); 
       TH1F *big_noise_voltages =  new TH1F("Voltages over Signal Window for Trigger PMT","",5000,-1.0,1.0);
       TH1F *big_noise_charges =  new TH1F("Signal Charge for Trigger PMT","",5000,-150,200); 
-      TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", 2502, 0, 502); 
+      TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", 5002, 0, 500.2); 
 
-      TH1F *Timing = new TH1F("Timing histogram","",500, 0, 250); 
-      TH1F *low_deltaT_waveform = new TH1F("Delta T less than 5ns waveform","", 2502, 0, 502); 
+      TH1F *Timing = new TH1F("Timing histogram","",250, 0, 250);  
+      TH1F *test_signal = new TH1F("Charge ETL PMT test","",20000,-150,200); 
+      TH1F *test_signal2 = new TH1F("Charge ETL PMT test 2","",20000,-150,200);
+      TH1F *test_signal3 = new TH1F("Charge ETL PMT test 3","",20000,-150,200);
+      TH1F *dark_waveform = new TH1F("Dark Waveform ETL PMT","", 5002, 0, 500.2); 
+      TH1F *dark_waveform2 = new TH1F("Dark Waveform ETL PMT 2","", 5002, 0, 500.2); 
+      TH1F *dark_waveform3 = new TH1F("Dark Waveform ETL PMT 3","", 5002, 0, 500.2); 
 
       
       // seperates file input 
       int g = 0; 
       int p = 0;
-      int a = 0;
          
       unsigned long i; 
       unsigned long j; 
+      unsigned long k;
       unsigned int window_count = 0.0;
       unsigned int new_window_count = 0.0;  
       string filename; 
       H5File file; 
       DataSet dataset;
 
-      int r = 0.0; 
+      // get rates
+      Double_t coincidence_count = 0.0;
+      Double_t dark_count = 0.0; 
+      Double_t late_pulse_count = 0.0; 
+      Double_t pre_pulse_count = 0.0;
+      Double_t post_pulse_count = 0.0;
+
+      int r = 0.0; // file count
 
       // average waveform
 
       float waveform_voltage[length_trace] = {0};
+      float window_voltage[length_trace] = {0};
       float big_waveform_voltage[length_trace] = {0};
       float timing_voltage[length_trace] = {0};
       float timing_voltage2[length_trace] = {0};
+      float timing_voltage4[length_trace] = {0};
+      float timing_voltage6[length_trace] = {0};
+      float timing_voltage8[length_trace] = {0};
 
       ofstream chargefile;
       chargefile.open("info.text"); // used mostly for debugging 
@@ -140,7 +177,7 @@ int main (int argc, char* argv[])
 	  cout<<filename<<endl;
 	  file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File 
 	  ifs >> filename;
-	  dataset = file.openDataSet("channel3"); // Open HDF5 DataSet
+	  dataset = file.openDataSet("channel2"); // Open HDF5 DataSet
 
 	  // Reading in Attributes
 	  horiz_interval = dataset.openAttribute("horiz_interval");
@@ -162,15 +199,46 @@ int main (int argc, char* argv[])
 	  unsigned long window_length = datacluster->trace_length; 
 	  unsigned long integrate_length = window_length - window_width; 
 	  cout << "The time bin width is " << dx << ", the window width is " << window_width << ", the integrate length is " << integrate_length << ", the trace length is " << window_length << ", the vertical resolution is " << dy << "." << endl;
+	  
+	  unsigned long prompt_window_start = window_width + window_start;
 		  
 	  // for PMT1
 	  double ncharge = 0.0; 
+	  double tcharge = 0.0;
+	  double tcharge2 = 0.0;
+	  double tcharge3 = 0.0;
 	  float voltage = 0.0; 
 	  float noise_voltage = 0.0; 
-	  float window_voltage = 0.0;
+	  float test_voltage = 0.0;
+	  float test_voltage2 = 0.0;
+	  float test_voltage3 = 0.0;
 	  float variance = 0.0; 
 	  float noise_pedestal = 0.0; 
 	  float corrected_noise_pedestal = 0.0; 
+
+	  float timing_voltage3 = 0.0; 
+	  float timing_voltage5 = 0.0;
+	  float timing_voltage7 = 0.0;
+	  float timing_voltage9 = 0.0;
+
+	  float max_time_entry2 = 0.0; 
+	  float max_time_entry3 = 0.0;
+	  float max_time_entry4 = 0.0;
+	  float max_time_entry5 = 0.0;
+
+	  unsigned long time_bin_counter2 = 0.0;
+	  unsigned long time_bin_counter3 = 0.0;
+	  unsigned long time_bin_counter4 = 0.0;
+	  unsigned long time_bin_counter5 = 0.0;
+	  unsigned long time_bin_counter6 = 0.0;
+	  unsigned long time_bin_counter7 = 0.0;
+	  unsigned long time_bin_counter8 = 0.0;
+	  unsigned long time_bin_counter9 = 0.0;
+
+	  float prompt_peak = 0.0; 
+	  float prompt_peak2 = 0.0;
+	  float prompt_peak3 = 0.0;
+	  float prompt_peak4 = 0.0;
 
 	  for (j = 0; j < datacluster->n_traces; j++){
 	    cout << "Analyzing trace " << j+1 << " out of " 
@@ -181,9 +249,35 @@ int main (int argc, char* argv[])
 	    noise_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy;
 	  
 	    // initialize 
-	    ncharge = 0.0;  
+	    ncharge = 0.0;
+	    tcharge = 0.0;
+	    tcharge2 = 0.0; 
+	    tcharge3 = 0.0;
 	    variance = 0.0; 
-	    noise_voltage = 0.0; 	   
+
+	    max_time_entry2 = 0.0; 
+	    max_time_entry3 = 0.0;
+	    max_time_entry4 = 0.0;
+	    max_time_entry5 = 0.0; 
+
+	    time_bin_counter2 = 0.0; 
+	    time_bin_counter3 = 0.0;
+
+	    time_bin_counter4 = 0.0; 
+	    time_bin_counter5 = 0.0;
+
+	    time_bin_counter6 = 0.0; 
+	    time_bin_counter7 = 0.0;	    
+
+	    time_bin_counter8 = 0.0;	    
+	    time_bin_counter9 = 0.0;	    
+
+	    prompt_peak = 0.0; 
+	    prompt_peak2 = 0.0;
+	    prompt_peak3 = 0.0; 
+	    prompt_peak4 = 0.0;
+
+	    k = 0; 
 	    
 	    for(i=0; i < window_width; i++){
 	      voltage = ((float)datacluster->data_out[i]*dy-noise_pedestal);
@@ -191,32 +285,180 @@ int main (int argc, char* argv[])
 	      variance = variance + voltage * voltage; 
 	    }
 	    
-	    // if(variance < 0.0006) { // traces that don't pass this cut have dark pulses! 
-	      //if(variance < 0.0012){ // for the ham12 inch pmts
+	    if(variance < variance_cut) { // traces that don't pass this cut have dark pulses! 
+	      //if(variance < 0.0009){ // for the ham12 inch pmts
+
 	      corrected_noise_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy; 
-	      //for(i = window_width + 399; i < window_width +  549; i++){ // signal window, hard coded in  
-	    for(i = window_width + 324; i < window_width +  474; i++){ // for ham12 inch pmts
+
+	      // PROMPT WINDOW 
+
+	      for(i = prompt_window_start; i < prompt_window_start + 300; i++){ // signal window
 		noise_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
 		noise_voltages->Fill(noise_voltage); 
 		ncharge = ncharge+(noise_voltage*((-1000.0*dx*1e9)/termination_ohms)); // charge 
-	    }
+	      }
+
+	      if(ncharge > charge_cut){ // hard cut on what is accepted as a prompt pulse 
+		for(i = prompt_window_start; i < prompt_window_start + 300; i++){ // signal window
+		  timing_voltage2[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		  if(timing_voltage2[i] < max_time_entry2){
+		    max_time_entry2 = timing_voltage2[i];
+		    time_bin_counter2 = i; // gets the bin of max peak
+		  }
+		}
+	      }
+	    
+	      prompt_peak = ((float)datacluster->data_out[time_bin_counter2]*dy-corrected_noise_pedestal); // gets voltage of max peak
+	      
+	      if(ncharge > charge_cut){
+		for(i = time_bin_counter2 - 150; i < time_bin_counter2; i++){ // window 15ns before the max peak
+		  timing_voltage3 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); // get voltage
+		  if(timing_voltage3 > prompt_peak*0.2){ // if voltage is less negative than 20% of promp peak
+		    time_bin_counter3 = i; 
+		  }
+		}
+	      }
+		
+	      // convert bin to time 
+	      time_max_trig2[r][j][k] =  time_bin_counter3*0.1;
+	      k++;
+	    
+	      // DARK WINDOW
+	      
+	      for(i = window_width; i < prompt_window_start; i++){ // dark window
+		test_voltage3 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
+		tcharge3 = tcharge3+(test_voltage3*((-1000.0*dx*1e9)/termination_ohms)); // charge 
+	      }
+	      
+	      if(tcharge3 > charge_cut){ 
+		for(i=0; i < window_length; i++){
+		  dark_waveform3->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		}
+	      }
+
+	      if(tcharge3 > charge_cut){
+		for(i = window_width; i < prompt_window_start; i++){ // dark window
+		  timing_voltage4[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		  if(timing_voltage4[i] < max_time_entry3){
+		    max_time_entry3 = timing_voltage4[i];
+		    time_bin_counter4 = i; // gets the bin of max peak
+		  }
+		}
+	      }
+
+	      prompt_peak2 = ((float)datacluster->data_out[time_bin_counter4]*dy-corrected_noise_pedestal); // gets voltage of max peak
+
+	      if(tcharge3 > charge_cut){
+		for(i = time_bin_counter4 - 150; i < time_bin_counter4; i++){ // window 15ns before the max peak
+		  timing_voltage5 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); // get voltage
+		  if(timing_voltage5 > prompt_peak2*0.2){ // if voltage is less negative than 20% of promp peak
+		    time_bin_counter5 = i; 
+		  }
+		}
+	      }
+	      
+	      // convert bin to time 
+	      time_max_trig2[r][j][k] =  time_bin_counter5*0.1;
+	      k++;
+
+	      // LATE WINDOW 
+
+	      for(i = prompt_window_start + 300; i < prompt_window_start + 1100; i++){
+		test_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
+		tcharge = tcharge+(test_voltage*((-1000.0*dx*1e9)/termination_ohms)); // charge 
+	      }
+
+	      if(tcharge > charge_cut){
+		for(i=0; i<window_length; i++){
+		  dark_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		}
+	      }
+
+	      if(tcharge > charge_cut){
+		for(i = prompt_window_start + 300; i < prompt_window_start + 1100; i++){ // dark window
+		  timing_voltage6[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		  if(timing_voltage6[i] < max_time_entry4){
+		    max_time_entry4 = timing_voltage6[i];
+		    time_bin_counter6 = i; // gets the bin of max peak
+		  }
+		}
+	      }
+
+	      prompt_peak3 = ((float)datacluster->data_out[time_bin_counter6]*dy-corrected_noise_pedestal); // gets voltage of max peak
+
+	      if(tcharge > charge_cut){
+		for(i = time_bin_counter6 - 150; i < time_bin_counter6; i++){ // window 15ns before the max peak
+		  timing_voltage7 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); // get voltage
+		  if(timing_voltage7 > prompt_peak3*0.2){ // if voltage is less negative than 20% of promp peak
+		    time_bin_counter7 = i; 
+		  }
+		}
+	      }
+	      
+	      // convert bin to time 
+	      time_max_trig2[r][j][k] =  time_bin_counter7*0.1;
+	      k++;
+
+	      // LAST DARK WINDOW
+
+	      for(i = prompt_window_start + 1100; i < window_length; i++){
+		test_voltage2 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
+		tcharge2 = tcharge2 +(test_voltage2*((-1000.0*dx*1e9)/termination_ohms)); // charge 
+	      }
+
+	      if(tcharge2 > charge_cut){
+		for(i=0; i<window_length; i++){
+		  dark_waveform2->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		}
+	      }
+
+	      if(tcharge2 > charge_cut){
+		for(i = prompt_window_start + 1100; i < window_length; i++){ // dark window
+		  timing_voltage8[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
+		  if(timing_voltage8[i] < max_time_entry5){
+		    max_time_entry5 = timing_voltage8[i];
+		    time_bin_counter8 = i; // gets the bin of max peak
+		  }
+		}
+	      }
+
+	      prompt_peak4 = ((float)datacluster->data_out[time_bin_counter8]*dy-corrected_noise_pedestal); // gets voltage of max peak
+
+	      if(tcharge2 > charge_cut){
+		for(i = time_bin_counter8 - 150; i < time_bin_counter8; i++){ // window 15ns before the max peak
+		  timing_voltage9 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); // get voltage
+		  if(timing_voltage9 > prompt_peak4*0.2){ // if voltage is less negative than 20% of promp peak
+		    time_bin_counter9 = i; 
+		  }
+		}
+	      }
+	      
+	      // convert bin to time 
+	      time_max_trig2[r][j][k] =  time_bin_counter9*0.1;
+	      
+	      // END OF WINDOWS
+
 	      
 	      for(i=0; i < window_length; i++){ // entire window 
-		window_voltage = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);  
-		waveform_voltage[i] = waveform_voltage[i] + window_voltage; 
+		window_voltage[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);  
+		waveform_voltage[i] = waveform_voltage[i] + window_voltage[i]; 
 	      }   
-	      
+
 	      for(i=0; i < window_length; i++){ // draws an acceptable trace 
 		acceptable_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
 	      }
+ 
 
 	      window_count++; // number of traces 
 	  
 	      charges_signal->Fill(ncharge); 
+	      test_signal->Fill(tcharge);
+	      test_signal2->Fill(tcharge2);
+	      test_signal3->Fill(tcharge3);
 	      corrected_noise_pedestals->Fill(corrected_noise_pedestal); 
-	      //  }
+	    }
 
-	    if(variance > 0.0008){ // draw a waveform that was cut, should have a dark pulse 
+	    if(variance > 0.001){ // draw a waveform that was cut, should have a dark pulse 
 	      for(i=0; i<window_length; i++){
 		pulse_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-noise_pedestal);
 	      }
@@ -226,13 +468,12 @@ int main (int argc, char* argv[])
 	    variances->Fill(variance); 
 	    noise_pedestals->Fill(noise_pedestal);
 	  }
-	  
+	  r++;
 	  file.close(); 
 	}
 	ifs.close(); 
       }
 
- 
       Float_t avg_waveform_voltage[length_trace];  
       for(i=0; i<length_trace; i++){ 
 	avg_waveform_voltage[i] = waveform_voltage[i]/window_count;
@@ -241,6 +482,7 @@ int main (int argc, char* argv[])
 
       cout  << "\n The number of Traces accepted is " << window_count << " for the ETL PMT." << endl;
       
+      r = 0.0;
       for(p=0;p<1;p++){
 
 	ifstream ifs ( argv[1] , ifstream::in ); // Open File List Stream
@@ -282,6 +524,7 @@ int main (int argc, char* argv[])
 	  float big_window_voltage = 0.0; 
 	  unsigned long time_bin_counter = 0.0; 
 	  float max_time_entry = 0.0;
+	  
 	
 	  for (j = 0; j < datacluster->n_traces; j++){
 	    cout << "Analyzing trace " << j+1 << " out of " 
@@ -306,7 +549,7 @@ int main (int argc, char* argv[])
 	      big_waveform_voltage[i] = big_waveform_voltage[i] + big_window_voltage; 
 	    } 
 
-	    for(i = 1150; i < 1325 ; i++){ // around the trigger pulse 
+	    for(i = 2460; i < 2600 ; i++){ // around the trigger pulse 
 	      timing_voltage[i] = ((float)datacluster->data_out[i]*dy-big_noise_pedestal);
 	      if(timing_voltage[i] < max_time_entry){
 		max_time_entry = timing_voltage[i]; 
@@ -315,7 +558,7 @@ int main (int argc, char* argv[])
 	    }
 	     
 	    // convert bin to time 
-	    time_max_trig[r][j] = time_bin_counter*0.2; // time-bins are 0.2ns long , which is the maximum horizontal resolution for this scope 
+	    time_max_trig[r][j] = time_bin_counter*0.1; // time-bins are 0.2ns long , which is the maximum horizontal resolution for this scope 
 
 	    new_window_count++; 
 	    big_noise_pedestals->Fill(big_noise_pedestal); 
@@ -335,11 +578,11 @@ int main (int argc, char* argv[])
       }
 
       cout  << "\n The number of Traces accepted is " << new_window_count << " for the trigger PMT." << endl;
-      cout  << " The number of files is " << r + 1 << endl; 
+      cout  << " The number of files is " << r  << endl; 
 
-
+      
       TAxis *axis = charges_signal->GetXaxis();
-
+      
       // spe fit 
       Int_t begin_spe_peak = 1.0; 
       Int_t end_spe_peak = 10.0; 
@@ -385,22 +628,23 @@ int main (int argc, char* argv[])
       //Double_t p00=myfunc2->GetParameter(0);
       //Double_t p11=myfunc2->GetParameter(1); 
       Double_t p22=myfunc2->GetParameter(2);
-      charges_signal->Fit("gaus","0","",bottom_charge_fit, top_charge_fit);
-      TF1 *myfunc=charges_signal->GetFunction("gaus");
-      Double_t p0=myfunc->GetParameter(0); 
-      Double_t p1=myfunc->GetParameter(1); 
-      Double_t p2=myfunc->GetParameter(2); 
       charges_signal->Fit("pol2","0","", 6*p22, bottom_charge_fit);
       TF1 *myfunc3=charges_signal->GetFunction("pol2");
       Double_t p000=myfunc3->GetParameter(0); cout << p000 << endl; 
       Double_t p111=myfunc3->GetParameter(1); cout << p111 << endl;
-      Double_t p222=myfunc3->GetParameter(2); cout << p222 << endl; 
+      Double_t p222=myfunc3->GetParameter(2); cout << p222 << endl;
+      charges_signal->Fit("gaus","0","",bottom_charge_fit, top_charge_fit);
+      TF1 *myfunc=charges_signal->GetFunction("gaus");
+      Double_t p0=myfunc->GetParameter(0); 
+      Double_t p1=myfunc->GetParameter(1); 
+      Double_t p2=myfunc->GetParameter(2);  
       charges_signal->Draw(); 
       c1->Update(); 
 
       Float_t x = 0.0; 
+      Float_t charge_min = 0.0;
       Double_t min_function = 0.0; // = p000 + p111*x + p222*x**2; 
-      Double_t d_function[2000] = {0.0}; 
+      Double_t d_function[20000] = {0.0}; 
       Int_t s = 0.0; 
 
       while(x < 2.0){
@@ -408,11 +652,12 @@ int main (int argc, char* argv[])
 	//chargefile << d_function[s] << endl; 
 	if(d_function[s-1] < 0.0 && d_function[s] > 0.0){
 	  min_function = p000 + p111*x + p222*x*x;
-	  //chargefile << "min_function " << min_function << endl; 
+	  charge_min = x; 
+	  chargefile << "min_function " << min_function << ", charge min " << charge_min << endl; 
 	}
-	x += 0.01;
+	x += 0.001;
 	s++; 
-      }
+      }    
 
       Double_t Low_charge_counter = axis->FindBin(3*p22); // use to count number of entries above 3 times the electronic noise width
       Double_t High_charge_counter = axis->FindBin(p1 + 3*p2); // use to count number of entries 3 sigma above the charge peak 
@@ -448,7 +693,6 @@ int main (int argc, char* argv[])
       Double_t Peak_to_valley = p0/min_function; 
       
       
-      TString box_title = Form("ET PMT: D784 KFLB, 120"); 
       TText *text_t = ptstats->AddText(box_title);
       text_t->SetTextSize(0.05); 
       TString hv_c = Form("Operating Voltage = %d V",  high_voltage);
@@ -476,7 +720,7 @@ int main (int argc, char* argv[])
       charges_signal->GetXaxis()->SetTitleColor(1);
       charges_signal->GetXaxis()->SetLabelFont(42);
       charges_signal->GetXaxis()->SetRangeUser(-1.0,5.0);
-      charges_signal->GetYaxis()->SetRangeUser(0.0,750.0); 
+      charges_signal->GetYaxis()->SetRangeUser(0.0,1200.0); 
       charges_signal->GetYaxis()->SetTitle("Events");
       charges_signal->GetYaxis()->SetTitleOffset(1.2);
       charges_signal->GetYaxis()->SetLabelFont(42);
@@ -490,155 +734,68 @@ int main (int argc, char* argv[])
       cout << "The Peak-to-valley is " << Peak_to_valley << endl; 
       cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl; 
       
-      r = 0.0; 
-
-      // loop for timing 
-      for(a=0; a<1; a++){
-
-	ifstream ifs ( argv[1] , ifstream::in ); // Open File List Stream
-	ifs >> filename;
-
-	while (ifs.good()){ // While Stream Is Open, Analyze New Files.
-
-	  cout<<filename<<endl;
-	  file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File 
-	  ifs >> filename;
-	  dataset = file.openDataSet("channel3"); // Open HDF5 DataSet
-
-	  // Reading in Attributes
-	  horiz_interval = dataset.openAttribute("horiz_interval");
-	  vertical_gain = dataset.openAttribute("vertical_gain");
-	  horiz_offset = dataset.openAttribute("horiz_offset");
-	  vertical_offset = dataset.openAttribute("vertical_offset");
-	  max_value = dataset.openAttribute("max_value");
-	  min_value = dataset.openAttribute("min_value");
-
-	  horiz_interval.read(PredType::NATIVE_DOUBLE, &dx);
-	  vertical_gain.read(PredType::NATIVE_DOUBLE, &dy);
-	  horiz_offset.read(PredType::NATIVE_DOUBLE, &xoffset);
-	  vertical_offset.read(PredType::NATIVE_DOUBLE, &yoffset);
-	  max_value.read(PredType::NATIVE_DOUBLE, &Vmax);
-	  min_value.read(PredType::NATIVE_DOUBLE, &Vmin);
-	  
-	  DataCluster * datacluster = Init_Data(&dataset); //initialize datacluser
-	
-	  unsigned long window_length = datacluster->trace_length; 
-	  unsigned long integrate_length = window_length - window_width; 
-	  cout << "The file number is " << r << ", the dx is " << dx << ", the integrate length is " << integrate_length << ", the trace length is " << window_length << ", the dy is " << dy << "." << endl;
-
-	  
-	  double time_charge = 0.0; 
-	  float time_voltage = 0.0; 
-	  float timing_voltage3 = 0.0; 
-	  float time_pedestal = 0.0;
-	  float max_time_entry2 = 0.0; 
-	  unsigned long time_bin_counter2 = 0.0;
-	  unsigned long time_bin_counter3 = 0.0;
-	  float prompt_peak = 0.0; 
-
-	  for (j = 0; j < datacluster->n_traces; j++){
-	    cout << "Analyzing trace " << j+1 << " out of " 
-	    	 <<datacluster->n_traces<< " total traces " << " for channel 3 ETL PMT"<<'\r';
-	    cout.flush(); 
-
-	    time_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy;		    
-	    Read_Trace(datacluster,j);
-	    
-	    time_charge = 0.0; 
-	    max_time_entry2 = 0.0; 
-	    time_bin_counter2 = 0.0; 
-	    time_bin_counter3 = 0.0;
-	    prompt_peak = 0.0; 
-	    
-	    //for(i = window_width + 399; i < window_width +  549; i++){ // signal window, hard coded in  
-	    for(i = window_width + 324; i < window_width +  474; i++){ // for ham12 inch pmts
-	      time_voltage = ((float)datacluster->data_out[i]*dy-time_pedestal);
-	      time_charge = time_charge+(time_voltage*((-1000.0*dx*1e9)/termination_ohms));		  
-	    }
-	    
-	    if(time_charge > 0.8){ // hard cut on what is accepted as a prompt pulse 
-	      for(i = window_width ; i < window_width + integrate_length ; i++){ // second half window
-		timing_voltage2[i] = ((float)datacluster->data_out[i]*dy-time_pedestal);
-		if(timing_voltage2[i] < max_time_entry2){
-		  max_time_entry2 = timing_voltage2[i];
-		  time_bin_counter2 = i; // gets the bin of max peak
-		}
-	      }
-	    }
-	    
-	    prompt_peak = ((float)datacluster->data_out[time_bin_counter2]*dy-time_pedestal); // gets voltage of max peak
-
-	    if(time_charge > 0.8){
-	      for(i = time_bin_counter2 - 100; i < time_bin_counter2; i++){ // window 20ns before the max peak
-		timing_voltage3 = ((float)datacluster->data_out[i]*dy-time_pedestal); // get voltage
-		if(timing_voltage3 > prompt_peak*0.2){ // if voltage is less negative than 20% of promp peak
-		  time_bin_counter3 = i; 
-		}
-	      }
-	    }
-		
-	    // convert bin to time 
-	    time_max_trig2[r][j] =  time_bin_counter3*0.2; 
-	    
-	    if(time_max_trig2[r][j] != 0){
-	      if((time_max_trig2[r][j] - time_max_trig[r][j]) < 5){
-		for(i=0; i<window_length; i++){
-		  low_deltaT_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-time_pedestal);
-		}
-	      }
-	    }
-	      
-
-	  }
-	  r++;
-	  file.close(); 
-	}
-	ifs.close(); 
-      }
-
-      cout  << " The number of files is " << r + 1 << endl; 
-	    
+      //TIMING
       
       // get time difference
       for(j=0; j < number_files; j++){
 	for(i=0; i < number_entries; i++){
-	  if(time_max_trig2[j][i] != 0){
-	    delta_T[j][i] = time_max_trig2[j][i] - time_max_trig[j][i];	   
-	    Timing->Fill(delta_T[j][i]); 	
+	  for(k=0; k < number_windows; k++){
+	    if(time_max_trig2[j][i][k] != 0){
+	      delta_T[j][i][k] = time_max_trig2[j][i][k] - time_max_trig[j][i];	   
+	      //chargefile << "Time ETL 20 percent pulse " << time_max_trig2[j][i][k] << ", Time Trigger Pulse " << time_max_trig[j][i] << ", Delta T " << delta_T[j][i][k] << endl;
+	      Timing->Fill(delta_T[j][i][k]); 
+	    }	
 	  }
 	}
       }
-
+     
       float time_bin_max = Timing->GetMaximumBin(); 
       TAxis *time_axis = Timing->GetXaxis();
       Double_t time_max = time_axis->GetBinCenter(time_bin_max);
 
       // draw the fits 
-      TCanvas *c2 = new TCanvas("c2","Charge",200,10,700,500);
+      TCanvas *c2 = new TCanvas("c2","Timing",200,10,700,500);
       Timing->Fit("gaus","0","",time_max - 3.0, time_max + 3.0);
       TF1 *fitfunc=Timing->GetFunction("gaus");
       Double_t f1=fitfunc->GetParameter(1);
       Double_t f2=fitfunc->GetParameter(2); 
       Timing->Draw(); 
+      c2->SetLogy(); 
       c2->Update(); 
 
-      // get coincidence rate 
-      Double_t coincidence_count = 0.0;
-      Double_t dark_count = 0.0; 
+      
       
       for(j=0; j < number_files; j++){
 	for(i=0; i < number_entries; i++){
-	  if(time_max_trig2[j][i] != 0){
-	    if(delta_T[j][i] < f1 + 3*f2 && delta_T[j][i] > f1 - 3*f2){ // if delta t is within 3 sigma of prompt peak 
-	      coincidence_count++;
-	    }
-	    else{
-	      dark_count++;
+	  for(k=0; k < number_windows; k++){
+	    if(time_max_trig2[j][i][k] != 0){
+	      if(delta_T[j][i][k] < f1 + 3*f2 && delta_T[j][i][k] > f1 - 3*f2){ // if delta t is within 3 sigma of prompt peak 
+		coincidence_count++;
+	      }
+	      else if(delta_T[j][i][k] > f1 + 5*f2 && delta_T[j][i][k] < f1 + length_late){ // 5 sigma after prompt peak to length late
+		late_pulse_count++; 
+	      }
+	      else if(delta_T[j][i][k] < f1 + 5*f2 && delta_T[j][i][k] > f1 + 3*f2){ // 5 sigma after prompt peak to length late
+		post_pulse_count++; 
+	      }
+	      else if(delta_T[j][i][k] < f1 - 3*f2 && delta_T[j][i][j] > f1 - 10){
+		pre_pulse_count++;
+	      }
+	      else{
+		dark_count++;
+	      }
 	    }
 	  }
 	}
       }
-    
+      
+      cout << "Coincidence Hits " << coincidence_count << endl;
+      cout << "Late Pulse Hits " << late_pulse_count << endl;
+      cout << "Dark Pulse Hits " << dark_count << endl;
+      cout << "Pre Pulse Hits " << pre_pulse_count << endl;
+      cout << "Post Pulse Hits " << post_pulse_count << endl; 
+      cout << "Total hits = " << coincidence_count + late_pulse_count + dark_count + pre_pulse_count + post_pulse_count << endl; 
+      
       // make the statistics legend
       TPaveStats *ttstats = new TPaveStats(0.6,0.6,0.98,0.98,"brNDC");
       ttstats->SetName("stats");
@@ -647,13 +804,23 @@ int main (int argc, char* argv[])
       ttstats->SetTextFont(42);
       ttstats->SetTextSize(0.035);
       ttstats->SetShadowColor(0);
-
-      Double_t ns = 10e-9; 
+        
+      Double_t delta_t_dark = (f1 - 10) + (250 - f1 - length_late); cout << "T dark " << delta_t_dark << endl; 
+      Double_t delta_t_coincidence = 6*f2; cout << "T coinc " << delta_t_coincidence  << endl; 
+      Double_t delta_t_late = length_late - 5*f2; cout << "T late " << delta_t_late  << endl; 
+      Double_t delta_t_pre = 10 - 3*f2;
+      Double_t t_not_used = 2*f2;
+      cout << "Total time = " << delta_t_dark + delta_t_coincidence + delta_t_late + delta_t_pre + t_not_used << endl; 
+      
+      Double_t ns = 1.0e-9; 
       Double_t Prompt_sigma = f2; 
       Double_t Prompt_FWHM = 2*f2*sqrt(2*log(2));
-      Double_t Dark_Percent = dark_count/(number_entries*number_files)*100; 
-      Double_t Dark_Rate = dark_count/(250*ns*number_entries*number_files); 
-      Double_t Coincidence_Percent = coincidence_count/(number_entries*number_files)*100 - Dark_Percent; // depends on the hard coded number of entries,shitty
+      Double_t Dark_Rate = dark_count/(delta_t_dark*ns*window_count); //number_entries*number_files); 
+      Double_t dark_pulse_count1 = Dark_Rate*delta_t_coincidence*ns*window_count;  //number_entries*number_files;
+      Double_t dark_pulse_count2 = Dark_Rate*delta_t_late*ns*window_count; //number_entries*number_files;
+      Double_t Coincidence_Percent = (coincidence_count - dark_pulse_count1)/(window_count)*100; //(number_entries*number_files)*100;
+      chargefile << "Corrected Coincidence Hits " << coincidence_count - dark_pulse_count1 << endl;
+      Double_t Late_Hit_Percent = (late_pulse_count - dark_pulse_count2)/(Timing->GetEntries())*100; 
       
       // statistics for timing histogram 
       TText *text_tt = ttstats->AddText(box_title);
@@ -668,9 +835,10 @@ int main (int argc, char* argv[])
       text_tt = ttstats->AddText(pulse_fwhm_t); 
       TString coincidence_t = Form("Prompt Coincidence Rate = %.3f%%", Coincidence_Percent);
       text_tt = ttstats->AddText(coincidence_t); 
-      TString darkrate_r = Form("Dark Rate = %.0f Hz", Dark_Rate);
-      text_tt = ttstats->AddText(darkrate_r); 
-     
+      TString darkrate_t = Form("Dark Rate = %.0f Hits/s", Dark_Rate);
+      text_tt = ttstats->AddText(darkrate_t); 
+      TString late_ratio_t = Form("Late Ratio =%.3f%%", Late_Hit_Percent);
+      text_tt = ttstats->AddText(late_ratio_t);      
 
       ttstats->SetOptStat(0);
       ttstats->SetOptFit(0);
@@ -684,14 +852,14 @@ int main (int argc, char* argv[])
       Timing->GetYaxis()->SetTitle("Events");
       Timing->GetYaxis()->SetLabelFont(42);
       Timing->GetYaxis()->SetTitleFont(42);
-      c2->SetLogy(); 
       c2->Modified();
       
       cout << "Prompt Mean " << f1 << endl; 
       cout << "Prompt Sigma " << f2 << endl; 
-      cout << "Dark Percent " << Dark_Percent << endl; 
       cout << "Coincidence Percent " << Coincidence_Percent << endl; 
-      
+      cout << "Late Hit Percent " << Late_Hit_Percent << endl; 
+      cout << "Dark rate correction to coincidence number " <<  dark_pulse_count1 << ", number of coincidence events " << coincidence_count << endl; 
+      cout << "Dark rate correction to late number " <<  dark_pulse_count2 << ", number of late events " << late_pulse_count << endl; 
       chargefile.close(); 
 
       // Output Histograms to File
@@ -715,7 +883,12 @@ int main (int argc, char* argv[])
 	big_average_waveform->Write(); 
 
 	Timing->Write();
-	low_deltaT_waveform->Write(); 
+	test_signal->Write();
+	test_signal2->Write();
+	test_signal3->Write();
+	dark_waveform->Write();
+	dark_waveform2->Write();
+	dark_waveform3->Write();
 	
       }
   
@@ -736,7 +909,12 @@ int main (int argc, char* argv[])
       delete big_average_waveform; 
 
       delete Timing; 
-      delete low_deltaT_waveform;
+      delete test_signal;
+      delete test_signal2; 
+      delete test_signal3;
+      delete dark_waveform;
+      delete dark_waveform2;
+      delete dark_waveform3;
 
     } // end of try block
 
