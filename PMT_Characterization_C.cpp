@@ -117,9 +117,6 @@ int main (int argc, char* argv[])
       TH1F *pulse_waveform = new TH1F("Unacceptable Waveform ETL PMT","", length_trace, 0, length_trace*0.1); 
       TH1F *average_waveform = new TH1F("Average Waveform ETL PMT","", length_trace, 0, length_trace*0.1);  
       
-      TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",100000,-1.0,1.0); 
-      TH1F *big_noise_voltages =  new TH1F("Voltages over Signal Window for Trigger PMT","",5000,-1.0,1.0);
-      TH1F *big_noise_charges =  new TH1F("Signal Charge for Trigger PMT","",5000,-150,200); 
       TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", length_trace, 0, length_trace*0.1); 
 
       TH1F *Timing = new TH1F("Timing histogram","",(length_trace/2)*0.1, 0, (length_trace/2)*0.1);  
@@ -577,8 +574,6 @@ int main (int argc, char* argv[])
 	  cout << "The file number is " << r << ", the time bin width is " << dx << ", the integrate length is " << integrate_length << ", the trace length is " << window_length << ", the vertical resolution is " << dy << "." << endl;
 
 	  // for trig PMT 
-	  double big_noise_charge = 0.0;
-	  float big_noise_voltage = 0.0; 
 	  float big_noise_pedestal = 0.0; 
 	  float big_window_voltage = 0.0; 
 	  unsigned long time_bin_counter = 0.0; 
@@ -591,17 +586,10 @@ int main (int argc, char* argv[])
 	    cout.flush(); 
 
 	    Read_Trace(datacluster,j); 
-	    big_noise_pedestal = TMath::Mean (500, datacluster->data_out)*dy; // pedestal correction
+	    big_noise_pedestal = TMath::Mean (window_length/4, datacluster->data_out)*dy; // pedestal correction
 	    
-	    big_noise_charge = 0.0; 
 	    max_time_entry = 0.0; 
 	    time_bin_counter = 0.0; 
-
-	    for(i = 500; i < 500 + integrate_length; i++){ // signal window for trigger pmt, arbitrary 
-	      big_noise_voltage = ((float)datacluster->data_out[i]*dy-big_noise_pedestal);
-	      big_noise_voltages->Fill(big_noise_voltage); 
-	      big_noise_charge = big_noise_charge+(big_noise_voltage*((-1000.0*dx*1e9)/termination_ohms)); 
-	    }
 
 	    for(i = 0; i < window_length ; i++){
 	      big_window_voltage = ((float)datacluster->data_out[i]*dy-big_noise_pedestal);
@@ -617,11 +605,9 @@ int main (int argc, char* argv[])
 	    }
 	     
 	    // convert bin to time 
-	    time_max_trig[r][j] = time_bin_counter*0.1; // time-bins are 0.2ns long , which is the maximum horizontal resolution for this scope 
+	    time_max_trig[r][j] = time_bin_counter*0.1; // time-bins are 0.1s long  
 
 	    new_window_count++; 
-	    big_noise_pedestals->Fill(big_noise_pedestal); 
-	    big_noise_charges->Fill(big_noise_charge); 
 	  }
 	  r++; // count files 
 	  file.close(); 
@@ -771,7 +757,7 @@ int main (int argc, char* argv[])
       c1->Update(); 
 
       Float_t x = 0.0; 
-      Float_t charge_min = 0.0;
+      //Float_t charge_min = 0.0;
       Double_t min_function = 0.0; // = p000 + p111*x + p222*x**2; 
       Double_t d_function[20000] = {0.0}; 
       Int_t s = 0.0; 
@@ -781,7 +767,7 @@ int main (int argc, char* argv[])
 	//chargefile << d_function[s] << endl; 
 	if(d_function[s-1] < 0.0 && d_function[s] > 0.0){
 	  min_function = p000 + p111*x + p222*x*x;
-	  charge_min = x; 
+	  //charge_min = x; 
 	  //cout << "min_function " << min_function << ", charge min " << charge_min << endl; 
 	}
 	x += 0.001;
@@ -1006,9 +992,6 @@ int main (int argc, char* argv[])
 	average_waveform->Write(); 
 	  
 	//Trig PMT 
-	big_noise_pedestals->Write(); 
-	big_noise_voltages->Write();
-	big_noise_charges->Write(); 
 	big_average_waveform->Write(); 
 
 	Timing->Write();
@@ -1027,9 +1010,6 @@ int main (int argc, char* argv[])
       delete pulse_waveform;
       delete average_waveform; 
 
-      delete big_noise_pedestals; 
-      delete big_noise_voltages; 
-      delete big_noise_charges; 
       delete big_average_waveform; 
 
       delete Timing; 
