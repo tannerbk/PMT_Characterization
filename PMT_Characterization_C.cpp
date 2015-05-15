@@ -22,6 +22,8 @@
 #include <TStyle.h>
 #include <TLine.h>
 #include <TGaxis.h>
+#include <TMinuit.h>
+#include <TFitter.h>
 
 // HDF5 Library
 #include "H5Cpp.h"
@@ -34,30 +36,26 @@ using namespace std;
 
 const int RANK_OUT = 2; // Data Rank
 
-const unsigned long length_trace = 5002;  
-const unsigned long number_entries = 500000; 
-const unsigned long number_files = 2; 
+const unsigned long length_trace = 10002;  
+const unsigned long number_entries = 200000; 
+const unsigned long number_files = 19; 
 const unsigned long number_windows = 4; 
-const int high_voltage = 1218; 
-const unsigned long window_start = 699;
-const int length_late = 95; 
-const float variance_cut = 10.0; 
-const float charge_cut = 1.0; 
+const int high_voltage = 2085; 
+//const unsigned long window_start = 499;
+const int length_late = 50; 
+const float variance_cut = 0.0006; //0.0002; 
+const float charge_cut = 0.8; 
+//**** FOR EFFICIENCY ***
+// ETL105 = window_start = 699, variance_cut = 0.00019, length_late = 95, HV 1340 
+// ETL142 = window_start = 649 
+// ZN0116 - window_start = 499 
+// ZT0070 - window_start = 399 , length late 80 
+// SNO tube - window_Start 1699, length late 50, variance cut 0.0004, HV 2024
 
-//                       424 (farther)                                                     (335 - 365)
-//for(i = window_width + 399; i < window_width +  549; i++){ // signal window, etl intermediate (330 - 360)
-//for(i = window_width + 374; i < window_width +  524; i++){ // signal window, etl closer (325 - 355)
-//for(i = window_width + 324; i < window_width +  474; i++){ // for ham12 inch hqe pmts (315 - 345)
-//for(i = window_width + 299; i < window_width + 449; i++){ // for ham12 inch eqe pmts (310 - 340)
-// efficiency 849 is 335 (use for ETL pmt). 
-// efficiency 499 is 300  (use for both ham pmts)
-// efficienc 649 , 699
 //TString box_title = Form("ZN0116 12-inch HQE"); 
 //TString box_title = Form("ZT0072 10-inch HQE");
-TString box_title = Form("11 Inch ET PMT: D784 KFLB, 118"); 
-// variance 0.15e-3 ch4
-// variance 0.25e-3 ch2
-// variance 0.15e-3 ch3
+//TString box_title = Form("11 Inch ET PMT: D784 KFLB, 134"); 
+TString box_title = Form("8 inch SNO PMT");					
 
 static double time_max_trig[number_files][number_entries] = {{ 0 }}; 
 static double time_max_trig2[number_files][number_entries][number_windows] = {{{ 0 }}}; 
@@ -82,6 +80,8 @@ typedef struct DataCluster DataCluster;
 
 DataCluster * Init_Data(DataSet *dataset);
 int Read_Trace(DataCluster *datacluster, unsigned long trace_index);
+//static double spe_CrystalBall(double *x,double *par);
+
 
 int main (int argc, char* argv[])
 {
@@ -113,33 +113,30 @@ int main (int argc, char* argv[])
       TH1F *noise_voltages = new TH1F("Voltages over Signal Window for ETL PMT","",5000,-1.0,1.0);
       TH1F *variances = new TH1F("Variance over Pedestal Window for ETL PMT","",500000,-0.1,1.0);
       TH1F *charges_signal = new TH1F("Charge ETL PMT","",20000,-150,200);   
-      TH1F *acceptable_waveform = new TH1F("Acceptable Waveform ETL PMT","", 5002, 0, 500.2); 
-      TH1F *pulse_waveform = new TH1F("Unacceptable Waveform ETL PMT","", 5002, 0, 500.2); 
-      TH1F *average_waveform = new TH1F("Average Waveform ETL PMT","", 5002, 0, 500.2);  
+      TH1F *acceptable_waveform = new TH1F("Acceptable Waveform ETL PMT","", length_trace, 0, length_trace*0.1); 
+      TH1F *pulse_waveform = new TH1F("Unacceptable Waveform ETL PMT","", length_trace, 0, length_trace*0.1); 
+      TH1F *average_waveform = new TH1F("Average Waveform ETL PMT","", length_trace, 0, length_trace*0.1);  
       
       TH1F *big_noise_pedestals = new TH1F("Pedestal for Trigger PMT","",100000,-1.0,1.0); 
       TH1F *big_noise_voltages =  new TH1F("Voltages over Signal Window for Trigger PMT","",5000,-1.0,1.0);
       TH1F *big_noise_charges =  new TH1F("Signal Charge for Trigger PMT","",5000,-150,200); 
-      TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", 5002, 0, 500.2); 
+      TH1F *big_average_waveform = new TH1F("Average Waveform for Trigger PMT","", length_trace, 0, length_trace*0.1); 
 
-      TH1F *Timing = new TH1F("Timing histogram","",250, 0, 250);  
-      TH1F *test_signal = new TH1F("Charge ETL PMT test","",20000,-150,200); 
-      TH1F *test_signal2 = new TH1F("Charge ETL PMT test 2","",20000,-150,200);
-      TH1F *test_signal3 = new TH1F("Charge ETL PMT test 3","",20000,-150,200);
-      TH1F *dark_waveform = new TH1F("Dark Waveform ETL PMT","", 5002, 0, 500.2); 
-      TH1F *dark_waveform2 = new TH1F("Dark Waveform ETL PMT 2","", 5002, 0, 500.2); 
-      TH1F *dark_waveform3 = new TH1F("Dark Waveform ETL PMT 3","", 5002, 0, 500.2); 
+      TH1F *Timing = new TH1F("Timing histogram","",(length_trace/2)*0.1, 0, (length_trace/2)*0.1);  
+      TH1F *check_average_waveform = new TH1F("Used to find min bin","", length_trace, 0, length_trace*0.1);  
 
       
       // seperates file input 
       int g = 0; 
       int p = 0;
+      int z = 0; 
          
       unsigned long i; 
       unsigned long j; 
       unsigned long k;
       unsigned int window_count = 0.0;
       unsigned int new_window_count = 0.0;  
+      unsigned int check_window_count = 0.0;
       string filename; 
       H5File file; 
       DataSet dataset;
@@ -156,13 +153,96 @@ int main (int argc, char* argv[])
       // average waveform
 
       float waveform_voltage[length_trace] = {0};
+      float waveform_voltage2[length_trace] = {0};
       float window_voltage[length_trace] = {0};
+      float window_voltage2[length_trace] = {0};
       float big_waveform_voltage[length_trace] = {0};
       float timing_voltage[length_trace] = {0};
       float timing_voltage2[length_trace] = {0};
       float timing_voltage4[length_trace] = {0};
       float timing_voltage6[length_trace] = {0};
       float timing_voltage8[length_trace] = {0};
+
+	
+      for(z=0; z<1; z++){
+	
+	ifstream ifs ( argv[1] , ifstream::in ); // Open File List Stream
+	ifs >> filename;
+
+	while (ifs.good()){ // While Stream Is Open, Analyze New Files.
+
+	  cout<<filename<<endl;
+	  file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File 
+	  ifs >> filename;
+	  dataset = file.openDataSet("channel2"); // Open HDF5 DataSet
+
+	  // Reading in Attributes
+	  horiz_interval = dataset.openAttribute("horiz_interval");
+	  vertical_gain = dataset.openAttribute("vertical_gain");
+	  horiz_offset = dataset.openAttribute("horiz_offset");
+	  vertical_offset = dataset.openAttribute("vertical_offset");
+	  max_value = dataset.openAttribute("max_value");
+	  min_value = dataset.openAttribute("min_value");
+
+	  horiz_interval.read(PredType::NATIVE_DOUBLE, &dx);
+	  vertical_gain.read(PredType::NATIVE_DOUBLE, &dy);
+	  horiz_offset.read(PredType::NATIVE_DOUBLE, &xoffset);
+	  vertical_offset.read(PredType::NATIVE_DOUBLE, &yoffset);
+	  max_value.read(PredType::NATIVE_DOUBLE, &Vmax);
+	  min_value.read(PredType::NATIVE_DOUBLE, &Vmin);
+	  
+	  DataCluster * datacluster = Init_Data(&dataset); //initialize datacluser
+	  
+	  unsigned long window_length = datacluster->trace_length; 
+	  unsigned long integrate_length = window_length - window_width; 
+	  cout << "The time bin width is " << dx << ", the window width is " << window_width << ", the integrate length is " << integrate_length << ", the trace length is " << window_length << ", the vertical resolution is " << dy << "." << endl;
+
+	  float check_pedestal = 0.0;
+	  float fix_check_pedestal = 0.0;
+	  float c_variance = 0.0;
+	  float c_voltage = 0.0;
+
+	  for (j = 0; j < datacluster->n_traces; j++){
+	    cout << "Analyzing trace " << j+1 << " out of " 
+		 <<datacluster->n_traces<< " total traces " << "for channel 3 ETL"<<'\r';
+	    cout.flush(); 
+
+	    Read_Trace(datacluster,j);
+	    check_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy;
+	    c_variance = 0.0;
+
+	    for(i=0; i < window_width; i++){
+	      c_voltage = ((float)datacluster->data_out[i]*dy-check_pedestal);
+	      c_variance = c_variance + c_voltage * c_voltage; 
+	    }
+	    
+	    if(c_variance < variance_cut) { // traces that don't pass this cut have dark pulses! 
+	      fix_check_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy;
+	      check_window_count++;
+	    }
+
+	    for(i=0; i < window_length; i++){ // entire window 
+	      window_voltage2[i] = ((float)datacluster->data_out[i]*dy-fix_check_pedestal);  
+	      waveform_voltage2[i] = waveform_voltage2[i] + window_voltage2[i]; 
+	    }
+
+	  }
+	  file.close(); 
+	}
+	ifs.close(); 
+      }
+      
+      cout  << "\n The number of Traces accepted is " << check_window_count << " for the test PMT." << endl;
+      
+      Float_t check_avg_waveform_voltage[length_trace]; 
+      for(i=0; i<length_trace; i++){ 
+	check_avg_waveform_voltage[i] = waveform_voltage2[i]/check_window_count;
+	check_average_waveform->SetBinContent(i+1, check_avg_waveform_voltage[i]);  
+      }
+
+      unsigned long window_start = check_average_waveform->GetMinimumBin() - length_trace/2 - 120;
+
+      cout << "Window start " << window_start << endl;
 
       ofstream chargefile;
       chargefile.open("info.text"); // used mostly for debugging 
@@ -286,7 +366,7 @@ int main (int argc, char* argv[])
 	    }
 	    
 	    if(variance < variance_cut) { // traces that don't pass this cut have dark pulses! 
-	      //if(variance < 0.0009){ // for the ham12 inch pmts
+	      
 
 	      corrected_noise_pedestal = TMath::Mean (window_width, datacluster->data_out)*dy; 
 
@@ -330,12 +410,6 @@ int main (int argc, char* argv[])
 		tcharge3 = tcharge3+(test_voltage3*((-1000.0*dx*1e9)/termination_ohms)); // charge 
 	      }
 	      
-	      if(tcharge3 > charge_cut){ 
-		for(i=0; i < window_length; i++){
-		  dark_waveform3->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
-		}
-	      }
-
 	      if(tcharge3 > charge_cut){
 		for(i = window_width; i < prompt_window_start; i++){ // dark window
 		  timing_voltage4[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
@@ -369,12 +443,6 @@ int main (int argc, char* argv[])
 	      }
 
 	      if(tcharge > charge_cut){
-		for(i=0; i<window_length; i++){
-		  dark_waveform->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
-		}
-	      }
-
-	      if(tcharge > charge_cut){
 		for(i = prompt_window_start + 300; i < prompt_window_start + 1100; i++){ // dark window
 		  timing_voltage6[i] = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
 		  if(timing_voltage6[i] < max_time_entry4){
@@ -404,12 +472,6 @@ int main (int argc, char* argv[])
 	      for(i = prompt_window_start + 1100; i < window_length; i++){
 		test_voltage2 = ((float)datacluster->data_out[i]*dy-corrected_noise_pedestal); 
 		tcharge2 = tcharge2 +(test_voltage2*((-1000.0*dx*1e9)/termination_ohms)); // charge 
-	      }
-
-	      if(tcharge2 > charge_cut){
-		for(i=0; i<window_length; i++){
-		  dark_waveform2->SetBinContent(i+1,(float)datacluster->data_out[i]*dy-corrected_noise_pedestal);
-		}
 	      }
 
 	      if(tcharge2 > charge_cut){
@@ -452,9 +514,6 @@ int main (int argc, char* argv[])
 	      window_count++; // number of traces 
 	  
 	      charges_signal->Fill(ncharge); 
-	      test_signal->Fill(tcharge);
-	      test_signal2->Fill(tcharge2);
-	      test_signal3->Fill(tcharge3);
 	      corrected_noise_pedestals->Fill(corrected_noise_pedestal); 
 	    }
 
@@ -549,7 +608,7 @@ int main (int argc, char* argv[])
 	      big_waveform_voltage[i] = big_waveform_voltage[i] + big_window_voltage; 
 	    } 
 
-	    for(i = 2460; i < 2600 ; i++){ // around the trigger pulse 
+	    for(i = window_length/2 - 60; i < window_length/2 + 60; i++){ // around the trigger pulse 
 	      timing_voltage[i] = ((float)datacluster->data_out[i]*dy-big_noise_pedestal);
 	      if(timing_voltage[i] < max_time_entry){
 		max_time_entry = timing_voltage[i]; 
@@ -617,6 +676,7 @@ int main (int argc, char* argv[])
       Double_t entrie_checker = entries_zero_bin;
       while(entrie_checker >= entries_zero_bin/2.0){
 	zero_bin++;
+	cout << zero_bin << endl; 
 	entrie_checker = charges_signal->GetBinContent(zero_bin); 
       }      
       Double_t charge_half_noise_height = charges_signal->GetBinCenter(zero_bin); 
@@ -630,14 +690,83 @@ int main (int argc, char* argv[])
       Double_t p22=myfunc2->GetParameter(2);
       charges_signal->Fit("pol2","0","", 6*p22, bottom_charge_fit);
       TF1 *myfunc3=charges_signal->GetFunction("pol2");
-      Double_t p000=myfunc3->GetParameter(0); cout << p000 << endl; 
-      Double_t p111=myfunc3->GetParameter(1); cout << p111 << endl;
-      Double_t p222=myfunc3->GetParameter(2); cout << p222 << endl;
-      charges_signal->Fit("gaus","0","",bottom_charge_fit, top_charge_fit);
-      TF1 *myfunc=charges_signal->GetFunction("gaus");
-      Double_t p0=myfunc->GetParameter(0); 
-      Double_t p1=myfunc->GetParameter(1); 
-      Double_t p2=myfunc->GetParameter(2);  
+      Double_t p000=myfunc3->GetParameter(0); 
+      Double_t p111=myfunc3->GetParameter(1); 
+      Double_t p222=myfunc3->GetParameter(2); 
+      /*
+	TF1 *spefunction=new TF1("spefunction",spe_CrystalBall,1.0,3.0,5);
+      
+	spefunction->SetParameters(1.6, -0.8, -2.0, 1.8, 100.0); 
+	spefunction->SetParLimits(0, 1.5, 1.7);
+	spefunction->SetParLimits(1, -2, 2);
+	spefunction->SetParLimits(2, -10, 10);
+	spefunction->SetParLimits(3, 0, 10);
+	spefunction->SetParLimits(4, 0, 200);*/
+      
+      /*Double_t par[9]; 
+      TF1 *g1 = new TF1("g1","gaus",bottom_charge_fit,top_charge_fit);
+      TF1 *g2 = new TF1("g2","expo",0.5,bottom_charge_fit);
+      TF1 *g3 = new TF1("g3","pol4",top_charge_fit,6);
+      TF1 *total = new TF1("total","gaus(0)+expo(3)+pol4(5)",0.5,6);
+      total->SetLineColor(2);
+      charges_signal->Fit(g1,"R");
+      charges_signal->Fit(g2,"R+");
+      charges_signal->Fit(g3,"R+");
+      g1->GetParameters(&par[0]);
+      g2->GetParameters(&par[3]);
+      g3->GetParameters(&par[5]);
+      total->SetParameters(par);
+      charges_signal->Fit(total,"R+");*/
+      charges_signal->Fit("gaus","","",bottom_charge_fit, top_charge_fit);
+      TF1 *myfunc = charges_signal->GetFunction("gaus"); 
+      //TF1 *bottom_myfunc = charges_signal->GetFunction("exp");
+      //TF1 *top_myfunc = charges_signal->GetFunction("pol4");
+      //Double_t spe_mean = g1->GetParameter(1); cout << spe_mean  << endl;
+      //Double_t spe_sigma = g1->GetParameter(2); cout << spe_sigma << endl;
+      //Double_t gaus_norm = g2->GetParameter(0); cout << gaus_norm << endl; 
+      //charges_signal->Fit("spefunction","","",1.0, 3.0);
+      //charges_signal->Fit("exp","","",0.5, bottom_charge_fit);
+      //Double_t expo_p0 = g2->GetParameter(0); cout << expo_p0 << endl;
+      //Double_t expo_p1 = g2->GetParameter(1); cout << expo_p1 << endl;
+      //charges_signal->Fit("pol4","","",top_charge_fit,5.0);
+ 
+      //Double_t poly_p1 = g3->GetParameter(0); cout << poly_p1 << endl;
+      //Double_t poly_p2 = g3->GetParameter(1); cout << poly_p2 << endl;
+      //Double_t poly_p3 = g3->GetParameter(2); cout << poly_p3 << endl;
+      //Double_t poly_p4 = g3->GetParameter(3); cout << poly_p4 << endl;
+      //TF1 *myfunc=charges_signal->GetFunction("spefunction"); 
+
+
+      /*
+    
+	TFitter *minuit= new TFitter(5);
+	{
+	double p1=-1;
+	minuit->ExecuteCommand("SET PRINTOUT",&p1,1);
+	minuit->ExecuteCommand("Set NOWARNINGS",&p1,0);
+	}
+      minuit->SetFCN(spe_CrystalBall);
+      minuit->SetParameter(0,"spe",1.6,1,0,0);
+      minuit->SetParameter(1,"sigma",1,1,0,0);
+      minuit->SetParameter(2,"alpha",2,1,0,0);
+      minuit->SetParameter(3,"n",1.8,1,0,0);
+      minuit->SetParameter(4,"Norm",100,1,0,0);
+      minuit->ExecuteCommand("SCAN",0,0);
+      minuit->ExecuteCommand("MINIMIZE",0,0);*/
+     
+      Double_t spe_peak= myfunc->GetParameter(0); cout << spe_peak << endl;  
+      Double_t spe_mean=myfunc->GetParameter(1); cout << spe_mean << endl; 
+      Double_t spe_sigma=myfunc->GetParameter(2); cout << spe_sigma << endl; 
+      /*Double_t alpha=myfunc->GetParameter(2); cout << alpha << endl;
+      Double_t n=myfunc->GetParameter(3); cout << n << endl;
+      Double_t N=myfunc->GetParameter(4); cout << N << endl;  */
+      /*
+      Double_t spe_mean = minuit->GetParameter(0); cout << spe_mean << endl; 
+      Double_t spe_sigma=minuit->GetParameter(1); cout << spe_sigma << endl; 
+      Double_t alpha=minuit->GetParameter(2); cout << alpha << endl;
+      Double_t n=minuit->GetParameter(3); cout << n << endl;
+      Double_t N=minuit->GetParameter(4); cout << N << endl;*/
+
       charges_signal->Draw(); 
       c1->Update(); 
 
@@ -653,14 +782,14 @@ int main (int argc, char* argv[])
 	if(d_function[s-1] < 0.0 && d_function[s] > 0.0){
 	  min_function = p000 + p111*x + p222*x*x;
 	  charge_min = x; 
-	  chargefile << "min_function " << min_function << ", charge min " << charge_min << endl; 
+	  //cout << "min_function " << min_function << ", charge min " << charge_min << endl; 
 	}
 	x += 0.001;
 	s++; 
       }    
 
       Double_t Low_charge_counter = axis->FindBin(3*p22); // use to count number of entries above 3 times the electronic noise width
-      Double_t High_charge_counter = axis->FindBin(p1 + 3*p2); // use to count number of entries 3 sigma above the charge peak 
+      Double_t High_charge_counter = axis->FindBin(spe_mean + 3*spe_sigma); // use to count number of entries 3 sigma above the charge peak 
       Double_t low_charge_entry = 0.0; 
       Double_t high_charge_entry = 0.0; 
       Double_t Low_bin_counter = Low_charge_counter; 
@@ -687,10 +816,10 @@ int main (int argc, char* argv[])
       ptstats->SetTextSize(0.035);
       ptstats->SetShadowColor(0);
       
-      Double_t FWHM =  p2*2*sqrt(2*log(2));
+      Double_t FWHM =  spe_sigma*2*sqrt(2*log(2));
       Double_t HCT = high_charge_entry * 100 / low_charge_entry;
       Double_t elec_width = p22; 
-      Double_t Peak_to_valley = p0/min_function; 
+      Double_t Peak_to_valley = spe_peak/min_function; 
       
       
       TText *text_t = ptstats->AddText(box_title);
@@ -701,7 +830,7 @@ int main (int argc, char* argv[])
       text_t = ptstats->AddText(ent);
       TString noise_t = Form("Electronics Noise Width = %.3f pC", elec_width);
       text_t = ptstats->AddText(noise_t); 
-      TString peak_t = Form("Charge Peak = %.3f pC", p1);
+      TString peak_t = Form("Charge Peak = %.3f pC", spe_mean);
       text_t = ptstats->AddText(peak_t);
       TString FWHM_t = Form("Charge FWHM = %.3f pC", FWHM); 
       text_t = ptstats->AddText(FWHM_t);
@@ -719,7 +848,7 @@ int main (int argc, char* argv[])
       charges_signal->GetXaxis()->SetTitleFont(42);
       charges_signal->GetXaxis()->SetTitleColor(1);
       charges_signal->GetXaxis()->SetLabelFont(42);
-      charges_signal->GetXaxis()->SetRangeUser(-1.0,5.0);
+      charges_signal->GetXaxis()->SetRangeUser(-1.0,6.0);
       charges_signal->GetYaxis()->SetRangeUser(0.0,1200.0); 
       charges_signal->GetYaxis()->SetTitle("Events");
       charges_signal->GetYaxis()->SetTitleOffset(1.2);
@@ -728,9 +857,9 @@ int main (int argc, char* argv[])
       c1->Modified();
 	  
       cout << "Electronic Noise Width is " << p22 << "pC" << endl; 
-      cout << "The Charge Peak is " << p1 << "pC" << endl; 
-      cout << "The Charge FWHM is " << p2*2*sqrt(2*log(2)) << "pC" << endl; 
-      cout << "Peak " << p0 << ", Valley " << min_function << endl; 
+      cout << "The Charge Peak is " << spe_mean << "pC" << endl; 
+      cout << "The Charge FWHM is " << spe_sigma*2*sqrt(2*log(2)) << "pC" << endl; 
+      cout << "Peak " << spe_mean << ", Valley " << min_function << endl; 
       cout << "The Peak-to-valley is " << Peak_to_valley << endl; 
       cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl; 
       
@@ -775,7 +904,7 @@ int main (int argc, char* argv[])
 	      else if(delta_T[j][i][k] > f1 + 5*f2 && delta_T[j][i][k] < f1 + length_late){ // 5 sigma after prompt peak to length late
 		late_pulse_count++; 
 	      }
-	      else if(delta_T[j][i][k] < f1 + 5*f2 && delta_T[j][i][k] > f1 + 3*f2){ // 5 sigma after prompt peak to length late
+	      else if(delta_T[j][i][k] < f1 + 5*f2 && delta_T[j][i][k] > f1 + 3*f2){ 
 		post_pulse_count++; 
 	      }
 	      else if(delta_T[j][i][k] < f1 - 3*f2 && delta_T[j][i][j] > f1 - 10){
@@ -805,7 +934,7 @@ int main (int argc, char* argv[])
       ttstats->SetTextSize(0.035);
       ttstats->SetShadowColor(0);
         
-      Double_t delta_t_dark = (f1 - 10) + (250 - f1 - length_late); cout << "T dark " << delta_t_dark << endl; 
+      Double_t delta_t_dark = (f1 - 10) + ((length_trace/2)*0.1 - f1 - length_late); cout << "T dark " << delta_t_dark << endl; 
       Double_t delta_t_coincidence = 6*f2; cout << "T coinc " << delta_t_coincidence  << endl; 
       Double_t delta_t_late = length_late - 5*f2; cout << "T late " << delta_t_late  << endl; 
       Double_t delta_t_pre = 10 - 3*f2;
@@ -815,7 +944,7 @@ int main (int argc, char* argv[])
       Double_t ns = 1.0e-9; 
       Double_t Prompt_sigma = f2; 
       Double_t Prompt_FWHM = 2*f2*sqrt(2*log(2));
-      Double_t Dark_Rate = dark_count/(delta_t_dark*ns*window_count); //number_entries*number_files); 
+      Double_t Dark_Rate = dark_count/(delta_t_dark*ns*window_count);  
       Double_t dark_pulse_count1 = Dark_Rate*delta_t_coincidence*ns*window_count;  //number_entries*number_files;
       Double_t dark_pulse_count2 = Dark_Rate*delta_t_late*ns*window_count; //number_entries*number_files;
       Double_t Coincidence_Percent = (coincidence_count - dark_pulse_count1)/(window_count)*100; //(number_entries*number_files)*100;
@@ -883,12 +1012,7 @@ int main (int argc, char* argv[])
 	big_average_waveform->Write(); 
 
 	Timing->Write();
-	test_signal->Write();
-	test_signal2->Write();
-	test_signal3->Write();
-	dark_waveform->Write();
-	dark_waveform2->Write();
-	dark_waveform3->Write();
+	check_average_waveform->Write();
 	
       }
   
@@ -909,12 +1033,7 @@ int main (int argc, char* argv[])
       delete big_average_waveform; 
 
       delete Timing; 
-      delete test_signal;
-      delete test_signal2; 
-      delete test_signal3;
-      delete dark_waveform;
-      delete dark_waveform2;
-      delete dark_waveform3;
+      delete check_average_waveform;
 
     } // end of try block
 
@@ -1019,3 +1138,34 @@ int Read_Trace(DataCluster *datacluster, unsigned long trace_index){
   datacluster->dataset->read( datacluster->data_out, PredType::NATIVE_CHAR, datacluster->memspace, datacluster->dataspace );
   return 0; // No protection...
 }
+/*
+// SPE distibution 
+static double spe_CrystalBall(double *x, double *par){
+  double CrystalBall=0.0;
+  double t=(x[0]-par[0])/(par[1]);
+  if (par[2] < 0.0) {
+    t=-t;
+  }
+  double absAlpha=abs(par[2]);
+  if (t >= -absAlpha) {
+    CrystalBall=par[4]*exp(-t*t/2);
+  }
+  else {
+    double A=pow(par[3]/absAlpha,par[3])*exp(-absAlpha*absAlpha/2.0);
+    double B=par[3]/absAlpha-absAlpha;
+    if (pow((B-t),par[3])!=0){
+      CrystalBall=par[4]*A/pow((B-t),par[3]);
+    }
+  }
+
+  return CrystalBall; // return SPE distribution
+  }*/
+/*
+void minuitFunction(int& nDim, double* gout, double& result, double par[], int flg) {
+  result = spe_CrystalBall(par[0], par[1]);
+}
+ 
+
+ */
+
+
