@@ -26,7 +26,7 @@ using namespace std;
 
 const int RANK_OUT = 2;
 
-// Scope Settings
+/* Scope Settings */
 const int length_trace = 10002;
 const unsigned long number_entries = 100000;
 const unsigned long number_files = 20;
@@ -34,10 +34,12 @@ const float sampling_time = 0.05;
 const string trigger_channel = "channel2";
 const string pmt_channel = "channel3";
 
-// Plot Settings
-// ...
+/* Plot and Output Settings */
+const int debug = 1; // Set to 0 for debugging output
+const int high_voltage = 1840;
+TString box_title = Form("R5912-MOD");
 
-// Analysis settings
+/* Analysis settings */
 const int length_late = 60;
 const float variance_cut = 0.005;
 // Charge cuts to fill timing histogram
@@ -47,10 +49,6 @@ const float charge_cut_high = 3.0;
 const float charge_cut_integral = 0.3;
 const int size_signal_window = 400;
 const int number_of_windows = (length_trace)/(size_signal_window);
-
-// PMT Specific Settings
-const int high_voltage = 1840;
-TString box_title = Form("R5912-MOD");
 
 static double time_max_trig[number_files][number_entries] = {{ 0 }};
 static double time_max_trig2[number_files][number_entries][number_of_windows] = {{{ 0 }}};
@@ -72,18 +70,18 @@ struct DataCluster{
 typedef struct DataCluster DataCluster;
 
 /* DataCluster Methods */
-
 DataCluster * Init_Data(DataSet *dataset);
 int Read_Trace(DataCluster *datacluster, unsigned long trace_index);
 
 int main (int argc, char* argv[])
 {
+
   unsigned long window_width = atoi(argv[3]);
   const int termination_ohms = 50;
-  try
-    {
 
-      cout << box_title << endl;
+  try{
+      cout << "Characterization PMT: " << box_title << endl;
+
       // Attribute Variables
       Attribute horiz_interval;
       Attribute vertical_gain;
@@ -100,7 +98,8 @@ int main (int argc, char* argv[])
       TH1F *average_waveform_trigger = new TH1F("Average_Waveform_Trigger","", length_trace, 0, length_trace*sampling_time);
       TH1F *Timing = new TH1F("Timing","",(length_trace/2)*sampling_time*2, 0, (length_trace/2)*sampling_time);
 
-      int window = 0;
+      int window = 0; // window count
+      int r = 0; // file count
       int dark_count_window = 0;
 
       size_t i;
@@ -111,8 +110,6 @@ int main (int argc, char* argv[])
       DataSet dataset;
       DataSet dataset_trigger;
 
-      int r = 0;
-
       // average waveform
       float waveform_voltage[length_trace] = {0};
       float waveform_voltage_trigger[length_trace] = {0};
@@ -122,7 +119,6 @@ int main (int argc, char* argv[])
 
       while (ifs.good()){ // While Stream Is Open, Analyze New Files.
 
-        cout<<filename<<endl;
         file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File
         ifs >> filename;
 
@@ -189,6 +185,7 @@ int main (int argc, char* argv[])
       unsigned long pre_trigger_window = 20 / (dx*1e9);
       unsigned long window_start = average_waveform->GetMinimumBin() - pre_window;
       unsigned long window_start_trigger = average_waveform_trigger->GetMinimumBin() - pre_trigger_window;
+      cout << " ----- Window Start Times ----- " << endl;
       cout << "Integration start time " << window_start*dx*1e9 << " ns." << endl;
       cout << "Trigger start time " << window_start_trigger*dx*1e9 << " ns." << endl;
       const int number_windows = (length_trace)/(2*size_signal_window);
@@ -198,7 +195,6 @@ int main (int argc, char* argv[])
 
       while (ifs2.good()){ // While Stream Is Open, Analyze New Files.
 
-        cout << "File " << r << ": " << filename << endl;
         file.openFile(filename, H5F_ACC_RDONLY); //Open HDF5 File
         ifs2 >> filename;
 
@@ -218,14 +214,20 @@ int main (int argc, char* argv[])
         DataCluster * datacluster_trigger = Init_Data(&dataset_trigger);
 
         size_t window_length = datacluster->trace_length;
-        size_t trigger_window = window_width*2*dx*1e9;
         if(r == 0){
-           cout << "The time bin width is " << dx*1e9 << " ns." << endl;
-           cout << "The pedestal window length is " << window_width*dx*1e9 << " ns." << endl;
-           cout << "The trace length is " << window_length*dx*1e9 << " ns." << endl;
-           cout << "The trigger window is " << window_width*dx*1e9 << "-" << trigger_window << " ns." << endl;
+           cout << " ----- PMT Characterization Parameters ----- " << endl;
+           cout << "File " << r << ": " << filename << endl;
+           cout << "The time bin width is " << dx*1e9 << " ns" << endl;
+           cout << "The trace length is " << window_length*dx*1e9 << " ns" << endl;
+           cout << "The pedestal window is 0 - " << window_width*dx*1e9 << " ns" << endl;
+           cout << "The trigger window is " << window_start_trigger*dx*1e9 << " - " << window_start_trigger*dx*1e9 + 40 << " ns" << endl;
+           cout << "The pmt window is " << window_start*dx*1e9 << " - " << window_start*dx*1e9 + 30 << " ns" << endl;
            cout << "The vertical resolution is " << dy*1000 << " mV." << endl;
            cout << "The vertical resoution of the trigger is " << dy2*1000 << " mV." << endl;
+           cout << "Analyzing Files: " << endl;
+        }
+        else{
+           cout << "File " << r ": " << filename << endl;
         }
 
         float variance;
@@ -351,8 +353,10 @@ int main (int argc, char* argv[])
       }
       ifs2.close();
 
-      cout  << "\n The number of Traces accepted is " << window_count << endl;
-      cout  << " The number of files is " << r  << endl;
+      if(debug == 0){
+        cout  << "The number of Traces accepted is " << window_count << endl;
+        cout  << "The number of files is " << r  << endl;
+      }
 
       // If this code wasn't bad enough, its about to get worse
       // continue reading at your own peril
@@ -398,24 +402,21 @@ int main (int argc, char* argv[])
 
       // Fit the charge peak and the charge valley
       TCanvas *c1 = new TCanvas("c1","Charge",200,10,500,500);
-      charges_signal->Fit("gaus","0","",-charge_half_noise_height, charge_half_noise_height);
+      charges_signal->Fit("gaus","q 0","",-charge_half_noise_height, charge_half_noise_height);
       TF1 *myfunc2=charges_signal->GetFunction("gaus");
       Double_t p22=myfunc2->GetParameter(2);
-      charges_signal->Fit("pol2","0","", 6*p22, bottom_charge_fit);
+      charges_signal->Fit("pol2","q 0","", 6*p22, bottom_charge_fit);
       TF1 *myfunc3=charges_signal->GetFunction("pol2");
       Double_t p000=myfunc3->GetParameter(0);
       Double_t p111=myfunc3->GetParameter(1);
       Double_t p222=myfunc3->GetParameter(2);
 
-      charges_signal->Fit("gaus","","",bottom_charge_fit, top_charge_fit);
+      charges_signal->Fit("gaus","q","",bottom_charge_fit, top_charge_fit);
       TF1 *myfunc = charges_signal->GetFunction("gaus");
 
       Double_t spe_peak= myfunc->GetParameter(0); 
-      cout << spe_peak << endl;
       Double_t spe_mean=myfunc->GetParameter(1); 
-      cout << spe_mean << endl;
       Double_t spe_sigma=myfunc->GetParameter(2); 
-      cout << spe_sigma << endl;
       charges_signal->Draw();
       c1->Update();
 
@@ -481,6 +482,7 @@ int main (int argc, char* argv[])
       ptstats->SetOptFit(0);
       ptstats->SetFillColor(0);
 
+      // This finds a good range for the plot
       int bmin_charge = charges_signal->GetXaxis()->FindBin(0.5);
       int bmax_charge = charges_signal->GetXaxis()->FindBin(3.5);
       charges_signal->GetXaxis()->SetRange(bmin_charge, bmax_charge);
@@ -502,14 +504,16 @@ int main (int argc, char* argv[])
       charges_signal->GetYaxis()->SetTitleFont(132);
       c1->Modified();
 
-      cout << "Electronic Noise Width is " << p22 << "pC" << endl;
-      cout << "The Charge Peak is " << spe_mean << "pC" << endl;
-      cout << "The Charge FWHM is " << spe_sigma*2*sqrt(2*log(2)) << "pC" << endl;
-      cout << "Peak " << spe_mean << ", Valley " << min_function << endl;
-      cout << "The Peak-to-valley is " << Peak_to_valley << endl;
-      cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl;
+      cout << " ----- PMT Charge Parameters ----- " << endl;      
+      if(debug == 0){
+        cout << "Electronic Noise Width is " << p22 << "pC" << endl;
+        cout << "Peak " << spe_mean << ", Valley " << min_function << endl;
+        cout << "The Charge FWHM is " << spe_sigma*2*sqrt(2*log(2)) << "pC" << endl;
+        cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl;
+      }
+      cout << "The charge peak is " << spe_mean << "pC" << endl;
+      cout << "The charge peak-to-valley is " << Peak_to_valley << endl;
 
-      //TIMING
       // get time difference
       for(size_t j = 0; j < number_files; j++){
 	for(i=0; i < number_entries; i++){
@@ -525,8 +529,6 @@ int main (int argc, char* argv[])
       float time_bin_max = Timing->GetMaximumBin();
       float time_bin_max_content = Timing->GetBinContent(time_bin_max);
       TAxis *time_axis = Timing->GetXaxis();
-      Double_t time_max = time_axis->GetBinCenter(time_bin_max);
-      cout << "Max time is " << time_max << endl;
 
       // Find the half-heights to integrate around
       float low_time_bin_fit = 0;
@@ -536,7 +538,6 @@ int main (int argc, char* argv[])
             break;
          }
       }
-      cout << "Low time for fit is " << low_time_bin_fit << endl;
 
       float high_time_bin_fit = 0;
       for(i = time_bin_max; i < time_bin_max + 10; i++){
@@ -545,11 +546,10 @@ int main (int argc, char* argv[])
             break;
          }
       }
-      cout << "High time for fit is " << high_time_bin_fit << endl;
 
       // draw the fits
       TCanvas *c2 = new TCanvas("c2","Timing",200,10,700,500);
-      Timing->Fit("gaus","","",low_time_bin_fit, high_time_bin_fit);
+      Timing->Fit("gaus","q","",low_time_bin_fit, high_time_bin_fit);
       TF1 *fitfunc=Timing->GetFunction("gaus");
       Double_t f1=fitfunc->GetParameter(1);
       Double_t f2=fitfunc->GetParameter(2);
@@ -595,12 +595,6 @@ int main (int argc, char* argv[])
 	}
       }
 
-      cout << "Coincidence Hits " << coincidence_count << endl;
-      cout << "Late Pulse Hits " << late_pulse_count << endl;
-      cout << "Dark Pulse Hits " << dark_count << endl;
-      cout << "Pre Pulse Hits " << pre_pulse_count << endl;
-      cout << "Post Pulse Hits " << post_pulse_count << endl;
-      cout << "Total hits = " << coincidence_count + late_pulse_count + dark_count + pre_pulse_count + post_pulse_count << endl;
 
       // make the statistics legend
       TPaveStats *ttstats = new TPaveStats(0.6,0.6,0.98,0.98,"brNDC");
@@ -612,17 +606,10 @@ int main (int argc, char* argv[])
       ttstats->SetShadowColor(0);
 
       Double_t delta_t_dark = (f1 - 10) + ((length_trace/2)*0.1 - f1 - length_late);
-      cout << "T dark " << delta_t_dark << endl;
-
       Double_t delta_t_coincidence = 6*f2;
-      cout << "T coinc " << delta_t_coincidence  << endl;
-
       Double_t delta_t_late = length_late - 5*f2;
-      cout << "T late " << delta_t_late  << endl;
-
       Double_t delta_t_pre = 10 - 3*f2;
       Double_t t_not_used = 2*f2;
-      cout << "Total time = " << delta_t_dark + delta_t_coincidence + delta_t_late + delta_t_pre + t_not_used << endl;
 
       Double_t ns = 1.0e-9;
       Double_t Prompt_sigma = f2;
@@ -633,6 +620,19 @@ int main (int argc, char* argv[])
       Double_t Coincidence_Percent = (coincidence_count - dark_pulse_count1)/(window_count)*100;
       Double_t Late_Hit_Percent = (late_pulse_count - dark_pulse_count2)/(Timing->GetEntries())*100;
 
+      if(debug == 0){
+        cout << "Coincidence Hits " << coincidence_count << endl;
+        cout << "Late Pulse Hits " << late_pulse_count << endl;
+        cout << "Dark Pulse Hits " << dark_count << endl;
+        cout << "Pre Pulse Hits " << pre_pulse_count << endl;
+        cout << "Post Pulse Hits " << post_pulse_count << endl;
+        cout << "Total hits = " << coincidence_count + late_pulse_count + dark_count + pre_pulse_count + post_pulse_count << endl;
+        cout << "T coinc " << delta_t_coincidence  << endl;
+        cout << "T late " << delta_t_late  << endl;
+        cout << "T dark " << delta_t_dark << endl;
+        cout << "Total time = " << delta_t_dark + delta_t_coincidence + delta_t_late + delta_t_pre + t_not_used << endl;
+      }
+
       // A Better way to do the coincidence count is integrate the charge distribution above
       // some value
       double coincidence_pct = 0;
@@ -640,6 +640,8 @@ int main (int argc, char* argv[])
       double bmax = charges_signal->GetXaxis()->FindBin(100);
       double coincidence_integral = charges_signal->Integral(bmin,bmax); 
       coincidence_pct = (coincidence_integral - dark_count_window)/(window_count)*100;
+
+      cout << " ----- PMT Rate Parameters ----- " << endl;      
       cout << "Coincidence pulses " << coincidence_integral << " Dark pulses " << dark_count_window << endl;
       cout << "Coincidence percent based on charge integral " << coincidence_pct << endl;
 
@@ -675,12 +677,15 @@ int main (int argc, char* argv[])
       Timing->GetYaxis()->SetTitleFont(132);
       c2->Modified();
 
+      cout << " ----- PMT Rate Parameters ----- " << endl;      
       cout << "Prompt Mean " << f1 << endl;
       cout << "Prompt Sigma " << f2 << endl;
-      cout << "Coincidence Percent " << Coincidence_Percent << endl;
-      cout << "Late Hit Percent " << Late_Hit_Percent << endl;
-      cout << "Dark rate correction to coincidence number " <<  dark_pulse_count1 << ", number of coincidence events " << coincidence_count << endl;
-      cout << "Dark rate correction to late number " <<  dark_pulse_count2 << ", number of late events " << late_pulse_count << endl;
+      if(debug == 0){
+        cout << "Coincidence Percent " << Coincidence_Percent << endl;
+        cout << "Late Hit Percent " << Late_Hit_Percent << endl;
+        cout << "Dark rate correction to coincidence number " <<  dark_pulse_count1 << ", number of coincidence events " << coincidence_count << endl;
+        cout << "Dark rate correction to late number " <<  dark_pulse_count2 << ", number of late events " << late_pulse_count << endl;
+      }
 
       // Output Histograms to File
       if (argc > 2){
