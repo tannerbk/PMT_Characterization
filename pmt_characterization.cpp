@@ -28,8 +28,6 @@ const int RANK_OUT = 2;
 
 /* Scope Settings */
 const int length_trace = 10002;
-const unsigned long number_entries = 100000;
-const unsigned long number_files = 20;
 const float sampling_time = 0.05;
 const string trigger_channel = "channel2";
 const string pmt_channel = "channel3";
@@ -43,16 +41,12 @@ TString box_title = Form("R5912-MOD");
 const int length_late = 60;
 const float variance_cut = 0.005;
 // Charge cuts to fill timing histogram
-const float charge_cut_low = 1.0;
+const float charge_cut_low = 0.4;
 const float charge_cut_high = 3.0;
 // Charge cuts to integrate above to count coincidence
 const float charge_cut_integral = 0.3;
 const int size_signal_window = 400;
 const int number_of_windows = (length_trace)/(size_signal_window);
-
-static double time_max_trig[number_files][number_entries] = {{ 0 }};
-static double time_max_trig2[number_files][number_entries][number_of_windows] = {{{ 0 }}};
-static double delta_T[number_files][number_entries][number_of_windows] = {{{ 0 }}};
 
 struct DataCluster{
   DataSet *dataset; // Dataset pointer
@@ -82,6 +76,9 @@ int main (int argc, char* argv[])
   try{
       cout << "Characterization PMT: " << box_title << endl;
 
+      vector<double> trigger_time;
+      vector<double> pmt_time;
+
       // Attribute Variables
       Attribute horiz_interval;
       Attribute vertical_gain;
@@ -93,10 +90,11 @@ int main (int argc, char* argv[])
       TH1F *pedestals = new TH1F("Pedestal","",100000,-1,1);
       TH1F *variances = new TH1F("Variance","",500000,-0.1,1.0);
       TH1F *charges_signal = new TH1F("Charge","",800,-4.0,12.0);
+      TH1F *peaks = new TH1F("Peaks","",5000,-1.0,0.1);
       TH1F *average_waveform = new TH1F("Average_Waveform","", length_trace, 0, length_trace*sampling_time);
       TH1F *trigger_pedestals = new TH1F("Pedestal_Trigger","",100000,-1.0,1.0);
       TH1F *average_waveform_trigger = new TH1F("Average_Waveform_Trigger","", length_trace, 0, length_trace*sampling_time);
-      TH1F *Timing = new TH1F("Timing","",(length_trace/2)*sampling_time*2, 0, (length_trace/2)*sampling_time);
+      TH1F *Timing = new TH1F("Timing","",(length_trace)*sampling_time*2, 0, (length_trace)*sampling_time);
 
       int window = 0; // window count
       int r = 0; // file count
@@ -146,7 +144,7 @@ int main (int argc, char* argv[])
            cout << "WARNING: Window length mismatch: " << window_length << " " << length_trace << endl;
         }
 
-        cout << "File " << r  << ", finding peak of average waveform." << endl;
+        cout << "File " << r  << ", finding peak of average waveforms." << endl;
 
         for(size_t j = 0; j < datacluster->n_traces; j++){
 
@@ -216,19 +214,16 @@ int main (int argc, char* argv[])
         size_t window_length = datacluster->trace_length;
         if(r == 0){
            cout << " ----- PMT Characterization Parameters ----- " << endl;
-           cout << "File " << r << ": " << filename << endl;
            cout << "The time bin width is " << dx*1e9 << " ns" << endl;
            cout << "The trace length is " << window_length*dx*1e9 << " ns" << endl;
            cout << "The pedestal window is 0 - " << window_width*dx*1e9 << " ns" << endl;
            cout << "The trigger window is " << window_start_trigger*dx*1e9 << " - " << window_start_trigger*dx*1e9 + 40 << " ns" << endl;
            cout << "The pmt window is " << window_start*dx*1e9 << " - " << window_start*dx*1e9 + 30 << " ns" << endl;
-           cout << "The vertical resolution is " << dy*1000 << " mV." << endl;
-           cout << "The vertical resoution of the trigger is " << dy2*1000 << " mV." << endl;
+           cout << "The vertical resolution is " << dy*1000 << " mV" << endl;
+           cout << "The vertical resoution of the trigger is " << dy2*1000 << " mV" << endl;
            cout << "Analyzing Files: " << endl;
         }
-        else{
-           cout << "File " << r ": " << filename << endl;
-        }
+        cout << "File " << r << ": " << filename << endl;
 
         float variance;
         float max_time_entry = 0.0;
@@ -296,49 +291,48 @@ int main (int argc, char* argv[])
       	            time_bin_counter = i;
       	          }
       	        }
-      	      }
 
-      	      prompt_peak = ((float)datacluster->data_out[time_bin_counter]*dy-pedestal);
+      	        prompt_peak = ((float)datacluster->data_out[time_bin_counter]*dy-pedestal);
+                peaks->Fill(prompt_peak);
 
-      	      if(window_charge > charge_cut_low && window_charge < charge_cut_high){
-                for(i = time_bin_counter - 20/(dx*1e9); i < time_bin_counter; i++){
-      	          float voltage = ((float)datacluster->data_out[i]*dy-pedestal);
-      	          if(voltage > prompt_peak*0.2){
-      	            time_bin_counter2 = i;
+                  for(i = time_bin_counter - 20/(dx*1e9); i < time_bin_counter; i++){
+      	            float voltage = ((float)datacluster->data_out[i]*dy-pedestal);
+      	            if(voltage > prompt_peak*0.2){
+      	              time_bin_counter2 = i;
+      	            }
       	          }
-      	        }
-      	      }
 
-      	      // convert bin to time
-      	      time_max_trig2[r][j][k] =  time_bin_counter2*dx*1e9;
+      	        // convert bin to time
+      	        pmt_time.push_back(time_bin_counter2*dx*1e9);
+
+                max_time_entry = 0;
+                time_bin_counter_trigger = 0;
+                time_bin_counter2_trigger = 0;
+
+                for(i = window_start_trigger; i < window_start_trigger + 40/(dx*1e9); i++){
+                  float voltage = ((float)datacluster_trigger->data_out[i]*dy2-trigger_pedestal);
+                  if(voltage < max_time_entry){
+      	            max_time_entry = voltage;
+      	            time_bin_counter_trigger = i;
+                  }
+                }
+
+                prompt_peak = ((float)datacluster_trigger->data_out[time_bin_counter_trigger]*dy2-trigger_pedestal);
+
+                // Look 20ns before peak for 20% crossing
+                for(i = time_bin_counter_trigger - 20/(dx*1e9); i < time_bin_counter_trigger; i++){
+                  float voltage = ((float)datacluster_trigger->data_out[i]*dy2-trigger_pedestal);
+                  if(voltage > prompt_peak*0.2){
+      	            time_bin_counter2_trigger = i;
+                  }
+                }
+
+                // convert bin to time
+                trigger_time.push_back(time_bin_counter2_trigger*dx*1e9);
+              }
       	      k++;
       	      window_counter = window_counter + size_signal_window;
             }
-
-            max_time_entry = 0;
-            time_bin_counter_trigger = 0;
-            time_bin_counter2_trigger = 0;
-
-            for(i = window_start_trigger; i < window_start_trigger + 40/(dx*1e9); i++){
-              float voltage = ((float)datacluster_trigger->data_out[i]*dy2-trigger_pedestal);
-              if(voltage < max_time_entry){
-      	        max_time_entry = voltage;
-      	        time_bin_counter_trigger = i;
-              }
-            }
-
-            prompt_peak = ((float)datacluster_trigger->data_out[time_bin_counter_trigger]*dy2-trigger_pedestal);
-
-            // Look 20ns before peak for 20% crossing
-            for(i = time_bin_counter_trigger - 20/(dx*1e9); i < time_bin_counter_trigger; i++){
-              float voltage = ((float)datacluster_trigger->data_out[i]*dy2-trigger_pedestal);
-              if(voltage > prompt_peak*0.2){
-      	        time_bin_counter2_trigger = i;
-              }
-            }
-
-            // convert bin to time
-            time_max_trig[r][j] = time_bin_counter2_trigger*dx*1e9;
 
             window_count++; // number of traces
             charges_signal->Fill(ncharge);
@@ -364,16 +358,16 @@ int main (int argc, char* argv[])
       TAxis *axis = charges_signal->GetXaxis();
 
       // spe fit
-      Int_t begin_spe_peak = 1.0;
-      Int_t end_spe_peak = 10.0;
-      Int_t first_bin = axis->FindBin(begin_spe_peak);
-      Int_t last_bin = axis->FindBin(end_spe_peak);
-      Double_t charge_finder[last_bin - first_bin];
-      Int_t f = 0.0;
-      Int_t b = 0.0;
-      Double_t max_charge = 0.0;
-      Double_t max_charge_entry = 0.0;
-      Double_t first_bin2 = first_bin;
+      float begin_spe_peak = 0.4;
+      float end_spe_peak = 10.0;
+      int first_bin = axis->FindBin(begin_spe_peak);
+      int last_bin = axis->FindBin(end_spe_peak);
+      double charge_finder[last_bin - first_bin];
+      int f = 0.0;
+      int b = 0.0;
+      float max_charge = 0.0;
+      float max_charge_entry = 0.0;
+      float first_bin2 = first_bin;
 
       while(first_bin < last_bin){
 	charge_finder[f] = charges_signal->GetBinContent(first_bin);
@@ -515,15 +509,8 @@ int main (int argc, char* argv[])
       cout << "The charge peak-to-valley is " << Peak_to_valley << endl;
 
       // get time difference
-      for(size_t j = 0; j < number_files; j++){
-	for(i=0; i < number_entries; i++){
-	  for(k=0; k < number_of_windows; k++){
-            if(time_max_trig2[j][i][k] != 0){
-              delta_T[j][i][k] = time_max_trig2[j][i][k] - time_max_trig[j][i];
-	      Timing->Fill(delta_T[j][i][k]);
-	    }
-	  }
-	}
+      for(size_t j = 0; j < trigger_time.size(); j++){
+         Timing->Fill(pmt_time[j] - trigger_time[j]);
       }
 
       float time_bin_max = Timing->GetMaximumBin();
@@ -558,43 +545,34 @@ int main (int argc, char* argv[])
       c2->SetLogy();
       c2->Update();
 
-      // get rates
-      Double_t coincidence_count = 0.0;
-      Double_t dark_count = 0.0;
-      Double_t late_pulse_count = 0.0;
-      Double_t pre_pulse_count = 0.0;
-      Double_t post_pulse_count = 0.0;
+      Double_t Prompt_sigma = f2;
+      Double_t Prompt_FWHM = 2*f2*sqrt(2*log(2));
 
-      /* I do the coincidence and dark count two different ways. This 
-         way is less robust to the details of the analysis. The other way
-         just uses integrals of the charge distributions to count, so 
-         it should be better for the absolute numbers */
-      for(size_t j = 0; j < number_files; j++){
-	for(i = 0; i < number_entries; i++){
-	  for(k = 0; k < number_of_windows; k++){
-	    if(time_max_trig2[j][i][k] != 0){
-              // if delta t is within 3 sigma of prompt peak
-	      if(delta_T[j][i][k] < f1 + 3*f2 && delta_T[j][i][k] > f1 - 3*f2){
-		coincidence_count++;
-	      }
-              // 5 sigma after prompt peak to length late
-	      else if(delta_T[j][i][k] > f1 + 5*f2 && delta_T[j][i][k] < f1 + length_late){
-		late_pulse_count++;
-	      }
-	      else if(delta_T[j][i][k] < f1 + 5*f2 && delta_T[j][i][k] > f1 + 3*f2){
-		post_pulse_count++;
-	      }
-	      else if(delta_T[j][i][k] < f1 - 3*f2 && delta_T[j][i][j] > f1 - 10){
-		pre_pulse_count++;
-	      }
-	      else{
-		dark_count++;
-	      }
-	    }
-	  }
-	}
-      }
+      double bmin = charges_signal->GetXaxis()->FindBin(charge_cut_integral);
+      double bmax = charges_signal->GetXaxis()->FindBin(100);
+      double coincidence_integral = charges_signal->Integral(bmin,bmax);
+      double coincidence_pct = (coincidence_integral)/(window_count)*100;
 
+      double time_bin_prompt_low = Timing->FindBin(f1-3*f2); 
+      double time_bin_prompt_high = Timing->FindBin(f1+3*f2);
+      double coincidence_timing_integral = Timing->Integral(time_bin_prompt_low, time_bin_prompt_high);
+      double coincidence_timing_pct = (coincidence_timing_integral)/(window_count)*100;
+
+      double time_bin_late_low = Timing->FindBin(f1+10);
+      double time_bin_late_high = Timing->FindBin(f1+length_late);
+      double late_timing_integral = Timing->Integral(time_bin_late_low, time_bin_late_high);
+      double late_pct = (late_timing_integral)/(coincidence_timing_integral)*100; 
+
+      double time_bin_dark_low = Timing->FindBin(f1-40); //40-15ns before prompt peak
+      double time_bin_dark_high = Timing->FindBin(f1-15);
+      double dark_timing_integral = Timing->Integral(time_bin_dark_low, time_bin_dark_high);
+      double dark_rate = (dark_timing_integral)/(30*1.0e-9*window_count);
+
+      cout << " ----- PMT Rate Parameters ----- " << endl;      
+      cout << "Coincidence percent of all hits " << coincidence_pct << endl;
+      cout << "Coincidence perecent of prompt hits " << coincidence_timing_pct << endl;
+      cout << "Late Hit Percent " << late_pct << endl;
+      cout << "Dark Rate " << dark_rate << endl;
 
       // make the statistics legend
       TPaveStats *ttstats = new TPaveStats(0.6,0.6,0.98,0.98,"brNDC");
@@ -604,46 +582,6 @@ int main (int argc, char* argv[])
       ttstats->SetTextFont(132);
       ttstats->SetTextSize(0.035);
       ttstats->SetShadowColor(0);
-
-      Double_t delta_t_dark = (f1 - 10) + ((length_trace/2)*0.1 - f1 - length_late);
-      Double_t delta_t_coincidence = 6*f2;
-      Double_t delta_t_late = length_late - 5*f2;
-      Double_t delta_t_pre = 10 - 3*f2;
-      Double_t t_not_used = 2*f2;
-
-      Double_t ns = 1.0e-9;
-      Double_t Prompt_sigma = f2;
-      Double_t Prompt_FWHM = 2*f2*sqrt(2*log(2));
-      Double_t Dark_Rate = dark_count/(delta_t_dark*ns*window_count);
-      Double_t dark_pulse_count1 = Dark_Rate*delta_t_coincidence*ns*window_count;
-      Double_t dark_pulse_count2 = Dark_Rate*delta_t_late*ns*window_count;
-      Double_t Coincidence_Percent = (coincidence_count - dark_pulse_count1)/(window_count)*100;
-      Double_t Late_Hit_Percent = (late_pulse_count - dark_pulse_count2)/(Timing->GetEntries())*100;
-
-      if(debug == 0){
-        cout << "Coincidence Hits " << coincidence_count << endl;
-        cout << "Late Pulse Hits " << late_pulse_count << endl;
-        cout << "Dark Pulse Hits " << dark_count << endl;
-        cout << "Pre Pulse Hits " << pre_pulse_count << endl;
-        cout << "Post Pulse Hits " << post_pulse_count << endl;
-        cout << "Total hits = " << coincidence_count + late_pulse_count + dark_count + pre_pulse_count + post_pulse_count << endl;
-        cout << "T coinc " << delta_t_coincidence  << endl;
-        cout << "T late " << delta_t_late  << endl;
-        cout << "T dark " << delta_t_dark << endl;
-        cout << "Total time = " << delta_t_dark + delta_t_coincidence + delta_t_late + delta_t_pre + t_not_used << endl;
-      }
-
-      // A Better way to do the coincidence count is integrate the charge distribution above
-      // some value
-      double coincidence_pct = 0;
-      double bmin = charges_signal->GetXaxis()->FindBin(charge_cut_integral);
-      double bmax = charges_signal->GetXaxis()->FindBin(100);
-      double coincidence_integral = charges_signal->Integral(bmin,bmax); 
-      coincidence_pct = (coincidence_integral - dark_count_window)/(window_count)*100;
-
-      cout << " ----- PMT Rate Parameters ----- " << endl;      
-      cout << "Coincidence pulses " << coincidence_integral << " Dark pulses " << dark_count_window << endl;
-      cout << "Coincidence percent based on charge integral " << coincidence_pct << endl;
 
       // statistics for timing histogram
       TText *text_tt = ttstats->AddText(box_title);
@@ -656,11 +594,11 @@ int main (int argc, char* argv[])
       text_tt = ttstats->AddText(pulse_sigma_t);
       TString pulse_fwhm_t = Form("Prompt FWHM = %.3f ns", Prompt_FWHM);
       text_tt = ttstats->AddText(pulse_fwhm_t);
-      TString coincidence_t = Form("Prompt Coincidence Rate = %.3f%%", Coincidence_Percent);
+      TString coincidence_t = Form("Prompt Coincidence Rate = %.3f%%", coincidence_timing_pct);
       text_tt = ttstats->AddText(coincidence_t);
-      TString darkrate_t = Form("Dark Rate = %.0f Hits/s", Dark_Rate);
+      TString darkrate_t = Form("Dark Rate = %.0f Hits/s", dark_rate);
       text_tt = ttstats->AddText(darkrate_t);
-      TString late_ratio_t = Form("Late Ratio =%.3f%%", Late_Hit_Percent);
+      TString late_ratio_t = Form("Late Ratio =%.3f%%", late_pct);
       text_tt = ttstats->AddText(late_ratio_t);
 
       ttstats->SetOptStat(0);
@@ -678,13 +616,9 @@ int main (int argc, char* argv[])
       c2->Modified();
 
       cout << " ----- PMT Rate Parameters ----- " << endl;      
-      cout << "Prompt Mean " << f1 << endl;
       cout << "Prompt Sigma " << f2 << endl;
       if(debug == 0){
-        cout << "Coincidence Percent " << Coincidence_Percent << endl;
-        cout << "Late Hit Percent " << Late_Hit_Percent << endl;
-        cout << "Dark rate correction to coincidence number " <<  dark_pulse_count1 << ", number of coincidence events " << coincidence_count << endl;
-        cout << "Dark rate correction to late number " <<  dark_pulse_count2 << ", number of late events " << late_pulse_count << endl;
+        cout << "Prompt Mean " << f1 << endl;
       }
 
       // Output Histograms to File
@@ -694,7 +628,8 @@ int main (int argc, char* argv[])
 	pedestals->Write();
 	variances->Write();
 	charges_signal->Write();
-	average_waveform->Write();
+        peaks->Write();
+        average_waveform->Write();
 
 	trigger_pedestals->Write();
 	average_waveform_trigger->Write();
@@ -705,6 +640,7 @@ int main (int argc, char* argv[])
       delete pedestals;
       delete variances;
       delete charges_signal;
+      delete peaks;
       delete average_waveform;
 
       delete trigger_pedestals;
