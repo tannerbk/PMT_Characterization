@@ -17,11 +17,10 @@
 #include "TLatex.h"
 #include <TMinuit.h>
 #include <TVirtualFitter.h>
+#include <TLegend.h>
 
 // HDF5 Library
 #include "H5Cpp.h"
-
-using namespace std;
 
 #ifndef PMT_CHARACTERIZATION
 #define PMT_CHARACTERIZATION
@@ -33,41 +32,10 @@ using namespace H5;
 using namespace std;
 
 
-/* Stuct for HDF5 information */
-const int RANK_OUT = 2;
-
-struct DataCluster{
-  DataSet *dataset; // Dataset pointer
-  DataSpace dataspace; // DataSet's DataSpace
-  DataSpace memspace; // MemSpace Object for Data Extraction
-  hsize_t offset[RANK_OUT]; // Data Extraction Parameters...
-  hsize_t count[RANK_OUT];
-  hsize_t offset_out[RANK_OUT];
-  hsize_t count_out[RANK_OUT];
-  unsigned long trace_length; // Length of a Scope Trace
-  unsigned long n_traces; // Number of traces in DataSet
-  char * data_out; // Pointer to Data Buffer
-};
-
-typedef struct DataCluster DataCluster;
-
-
-/* DataCluster Methods */
-DataCluster * Init_Data(DataSet *dataset);
-int Read_Trace(DataCluster *datacluster, unsigned long trace_index);
-
-
 /* Find the start of the window by looking at average waveforms */
 int GetWindowStart(char* datafile);
 double GetSampling(char* datafile);
 size_t GetLength(char* datafile);
-
-
-/* Lognormal fits */
-double Lognormal(double t, double tau, double sigma, double mag);
-double SingleLognormal(Double_t* x, Double_t* par);
-double DoubleLognormal(Double_t* x, Double_t* par);
-double TripleLognormal(Double_t* x, Double_t* par);
 
 
 /* Datacluser attributes */
@@ -83,35 +51,31 @@ DataSet dataset;
 DataSet dataset_trigger;
 char* datafile;
 
-
 /* Scope Settings */
-const string trigger_channel = "channel2";
-const string pmt_channel = "channel3";
+const string trigger_channel = "channel1";
+const string pmt_channel = "channel2";
 unsigned long window_width;
-
 
 /* Plot Settings */
 const int high_voltage = 1840;
 TString box_title = Form("R5912-MOD");
 
-
 /* Various modes */
 int mode;
 const char* converged = "CONVERGED ";
 
-
 /* Analysis settings */
-const int length_late = 60;
+const int length_late = 45;
 const float variance_cut = 0.005;
+const int prompt_peak_fraction = 0.2;
 // Charge cuts to fill timing histogram
 const float charge_cut_low = 0.4;
 const float charge_cut_high = 3.0;
 // Charge cuts to integrate above to count coincidence
-const float charge_cut_integral = 0.3;
-const int size_signal_window = 400;
-const int termination_ohms = 50;
+const float charge_cut_integral = 0.4;
+const int size_signal_window = 300;
+const int termination_ohms = 75; /* SNO PMTs are 75 ohms terminated */
 string filename;
-
 
 /* Vectors to store timing info */
 vector<double> trigger_time;
@@ -121,9 +85,29 @@ vector<double> pmt_time;
 vector<double> waveform_voltage;
 vector<double> waveform_voltage_trigger;
 
-
 /* Vectors for double pulsing */
 vector<double> prompt_pulse;
 vector<double> late_pulse;
+vector<double> prompt_q;
+vector<double> late_q;
+
+/* 2D charge time vector */
+vector<double> kTime;
+vector<double> kCharge;
+
+// Histograms for both channels (trigger and analysis channel)
+TH1F *pedestals = new TH1F("Pedestal","",100000,-1,1);
+TH1F *variances = new TH1F("Variance","",500000,-0.1,1.0);
+TH1F *charges_signal = new TH1F("Charge","",800,-4.0,12.0);
+TH1F *peaks = new TH1F("Peaks","",5000,-1.0,0.1);
+TH1F *trigger_pedestals = new TH1F("Pedestal_Trigger","",100000,-1.0,1.0);
+
+TH1F *prompt_hits_charge = new TH1F("promptq","",800,-4.0,12.0);
+TH1F *late_hits_charge = new TH1F("lateq","",800,-4.0,12.0);
+TH1F *double_hits_prompt_charge = new TH1F("double_promptq","",800,-4.0,12.0);
+TH1F *double_hits_late_charge = new TH1F("double_lateq","",800,-4.0,12.0);
+TH1F *dark_hits_charge = new TH1F("darkq","",800,-4.0,12.0);
+
+TH1F *prompt_charge = new TH1F("prompt_charge","",800,-4.0,12.0);
 
 #endif

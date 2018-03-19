@@ -1,4 +1,5 @@
 #include "pmt_characterization.h"
+#include "tools.h"
 
 int main (int argc, char* argv[])
 {
@@ -12,11 +13,13 @@ int main (int argc, char* argv[])
     // mode = 3: write individual waveforms with triple lognormal fits to file
     if(argc > 4){
        mode = atoi(argv[4]);
+       cout << "Setting run mode: " << mode << endl;
     }
     else{
        mode = 0;
     }
 
+    // Fitter for waveform fitting to lognormal pulses
     TVirtualFitter::SetDefaultFitter("Minuit");
     TVirtualFitter::SetMaxIterations(50000);
     TFile *ff = 0;
@@ -27,31 +30,40 @@ int main (int argc, char* argv[])
     double sampling_time = GetSampling(datafile)*1e9;
     size_t length_trace = GetLength(datafile);
 
-    // Histograms for both channels (trigger and analysis channel)
-    TH1F *pedestals = new TH1F("Pedestal","",100000,-1,1);
-    TH1F *variances = new TH1F("Variance","",500000,-0.1,1.0);
-    TH1F *charges_signal = new TH1F("Charge","",800,-4.0,12.0);
-    TH1F *peaks = new TH1F("Peaks","",5000,-1.0,0.1);
+
+    // Create ROOT histograms
     TH1F *average_waveform = new TH1F("Average_Waveform","",
         length_trace, 0, length_trace*sampling_time);
-    TH1F *trigger_pedestals = new TH1F("Pedestal_Trigger","",100000,-1.0,1.0);
+
     TH1F *average_waveform_trigger = new TH1F("Average_Waveform_Trigger","",
         length_trace, 0, length_trace*sampling_time);
     TH1F *Timing = new TH1F("Timing","",(length_trace)*sampling_time*2, 0,
         (length_trace)*sampling_time);
-
+    
     TH1F *prompt_hits = new TH1F("prompt","",(length_trace)*sampling_time*2, 0,
         (length_trace)*sampling_time);
-    TH1F *late_hits = new TH1F("late","",(length_trace)*sampling_time*2, 0,
+    TH1F *late_hits = new TH1F("late","",(length_trace)*sampling_time, 0,
         (length_trace)*sampling_time);
-    TH1F *double_hits_prompt = new TH1F("double_prompt","",(length_trace)*sampling_time*2, 0,
+    TH1F *double_hits_prompt = new TH1F("double_prompt","",(length_trace)*sampling_time, 0,
         (length_trace)*sampling_time);
-    TH1F *double_hits_late = new TH1F("double_late","",(length_trace)*sampling_time*2, 0,
+    TH1F *double_hits_late = new TH1F("double_late","",(length_trace)*sampling_time, 0,
         (length_trace)*sampling_time);
-    TH1F *dark_hits = new TH1F("dark","",(length_trace)*sampling_time*2, 0,
+    TH1F *dark_hits = new TH1F("dark","",(length_trace)*sampling_time, 0,
             (length_trace)*sampling_time);
 
     TH1F *fit_waveform = new TH1F("Fit Waveform","", length_trace, 0, length_trace);
+
+    TH1F * parameter0 = new TH1F("p0","",20,-100,100);
+    TH1F * parameter3 = new TH1F("p3","",20,-100,100);
+    TH1F * parameter6 = new TH1F("p6","",20,-100,100);
+
+    TH1F * parameter1 = new TH1F("p1","",200,-0.2,0.2);
+    TH1F * parameter4 = new TH1F("p4","",200,-0.2,0.2);
+    TH1F * parameter7 = new TH1F("p7","",200,-0.2,0.2);
+
+    TH1F * parameter2 = new TH1F("p2","",200,-0.2,5);
+    TH1F * parameter5 = new TH1F("p5","",200,-0.2,5);
+    TH1F * parameter8 = new TH1F("p8","",200,-0.2,5);
 
     waveform_voltage.resize(length_trace, 0);
     waveform_voltage_trigger.resize(length_trace,0);
@@ -59,6 +71,7 @@ int main (int argc, char* argv[])
     // Find a starting point for the window using the average waveforms
     int count = GetWindowStart(datafile);
 
+    // Build the average waveform for both PMTs
     for(size_t i = 0; i < length_trace; i++){
       waveform_voltage[i] = waveform_voltage[i]/count;
       average_waveform->SetBinContent(i+1, waveform_voltage[i]);
@@ -120,7 +133,7 @@ int main (int argc, char* argv[])
           cout << "The trace length is " << window_length*dx*1e9 << " ns" << endl;
           cout << "The pedestal window is 0 - " << window_width*dx*1e9 << " ns" << endl;
           cout << "The trigger window is " << window_start_trigger*dx*1e9 << " - " << window_start_trigger*dx*1e9 + 40 << " ns" << endl;
-          cout << "The pmt window is " << window_start*dx*1e9 << " - " << window_start*dx*1e9 + 30 << " ns" << endl;
+          cout << "The pmt window is " << window_start*dx*1e9 << " - " << window_start*dx*1e9 + size_signal_window*dx*1e9 << " ns" << endl;
           cout << "The vertical resolution is " << dy*1000 << " mV" << endl;
           cout << "The vertical resoution of the trigger is " << dy2*1000 << " mV" << endl;
           cout << "Analyzing Files: " << endl;
@@ -169,8 +182,8 @@ int main (int argc, char* argv[])
             // need to initialze these all for every window
             double window_charge = 0.0;
             max_time_entry = 0.0;
-            time_bin_counter = 0;
-            time_bin_counter2 = 0;
+            time_bin_counter = 0.0;
+            time_bin_counter2 = 0.0;
 
     	    for(size_t i = window_counter + window_width; i < window_counter + window_width + size_signal_window; i++){
     	      float voltage = ((float)datacluster->data_out[i]*dy-pedestal);
@@ -192,7 +205,7 @@ int main (int argc, char* argv[])
 
               for(size_t i = time_bin_counter - 20/(dx*1e9); i < time_bin_counter; i++){
     	        float voltage = ((float)datacluster->data_out[i]*dy-pedestal);
-    	        if(voltage > prompt_peak*0.2){
+    	        if(voltage > prompt_peak*prompt_peak_fraction){
     	          time_bin_counter2 = i;
     	        }
     	      }
@@ -214,7 +227,7 @@ int main (int argc, char* argv[])
               // Look 20ns before peak for 20% crossing
               for(size_t i = time_bin_counter_trigger - 20/(dx*1e9); i < time_bin_counter_trigger; i++){
                 float voltage = ((float)datacluster_trigger->data_out[i]*dy2-trigger_pedestal);
-                if(voltage > prompt_peak*0.2){
+                if(voltage > prompt_peak*prompt_peak_fraction){
     	            time_bin_counter2_trigger = i;
                 }
               }
@@ -222,10 +235,14 @@ int main (int argc, char* argv[])
     	      pmt_time.push_back(time_bin_counter2*dx*1e9);
               trigger_time.push_back(time_bin_counter2_trigger*dx*1e9);
               double dt = (double(time_bin_counter2) - double(time_bin_counter2_trigger))*dx*1e9;
+              kTime.push_back(dt);
+              kCharge.push_back(window_charge);
+              
 
               if(mode == 2){
                 if(nwindows == 0){
                   prompt_pulse.push_back(dt);
+                  prompt_q.push_back(window_charge);
                   nwindows++;
     	          k++;
     	          window_counter = window_counter + size_signal_window;
@@ -233,6 +250,7 @@ int main (int argc, char* argv[])
                 }
                 if(nwindows == 1){
                   late_pulse.push_back(dt);
+                  late_q.push_back(window_charge);
                   found_late_pulse = 1;
                   nwindows++;
                 }
@@ -243,6 +261,7 @@ int main (int argc, char* argv[])
               // Got to the end of the window and didn't find a double pulse
               if(nwindows == 1 && found_late_pulse == 0 && window == number_windows - 1){
                 prompt_pulse.pop_back();
+                prompt_q.pop_back();
               }
             }
  
@@ -250,8 +269,13 @@ int main (int argc, char* argv[])
     	    window_counter = window_counter + size_signal_window;
           }
 
+          cout << "Analyzing trace " << j+1 << " out of "
+               <<datacluster->n_traces<< " total traces " <<'\r';
+          cout.flush();
+
+
           if(mode == 3 && ncharge > 0.5){
-            TCanvas *cn = new TCanvas("","",800,600);
+            //TCanvas *cn = new TCanvas("","",800,600);
             float std = TMath::RMS (window_width, datacluster->data_out);
             for(size_t i = 0; i < window_length; i++){
     	      float voltage = ((float)datacluster->data_out[i]*dy-pedestal);
@@ -295,8 +319,25 @@ int main (int argc, char* argv[])
             double NDF_3 = waveform3->GetNDF();
             const char* conv3 = gMinuit->fCstatu.Data();
             if(chi2_3/NDF_3 < 2.5 && strcmp(conv3,converged)==0){
-              fit_waveform->Write();
-              cn->Update();
+              //fit_waveform->Write();
+              //cn->Update();
+              if(chi2_3/NDF_3 < 2.5 && strcmp(conv3,converged)==0){
+                vector<double> parameters(9,0);
+                for(int p = 0; p < 9; p++){
+                  parameters.at(p) = waveform3->GetParameter(p);
+                }
+                if(parameters.end() == std::find(parameters.begin(), parameters.end(), true)){
+                   parameter0->Fill(parameters[0] - max_time);
+                   parameter1->Fill(parameters[1]);
+                   parameter2->Fill(parameters[2]);
+                   parameter3->Fill(parameters[3] - max_time);
+                   parameter4->Fill(parameters[4]);
+                   parameter5->Fill(parameters[5]);
+                   parameter6->Fill(parameters[6] - max_time);
+                   parameter7->Fill(parameters[7]);
+                   parameter8->Fill(parameters[8]);
+                }
+              }
             }
           }
 
@@ -502,7 +543,6 @@ int main (int argc, char* argv[])
           break;
        }
     }
- int GetLength(char* datafile);
 
     // draw the fits
     TCanvas *c2 = new TCanvas("c2","Timing",200,10,700,500);
@@ -516,6 +556,13 @@ int main (int argc, char* argv[])
     Timing->Draw();
     c2->SetLogy();
     c2->Update();
+
+    // Draw the charge for prompt hits
+    for(size_t i = 0; i < kTime.size(); i++){
+       if(kTime[i] < f1 + 1 && kTime[i] > f1 - 1){
+          prompt_charge->Fill(kCharge[i]);
+       }
+    }
 
     Double_t Prompt_sigma = f2;
     Double_t Prompt_FWHM = 2*f2*sqrt(2*log(2));
@@ -535,7 +582,7 @@ int main (int argc, char* argv[])
     double late_timing_integral = Timing->Integral(time_bin_late_low, time_bin_late_high);
     double late_pct = (late_timing_integral)/(coincidence_timing_integral)*100;
 
-    double time_bin_dark_low = Timing->FindBin(f1-40); //40-15ns before prompt peak
+    double time_bin_dark_low = Timing->FindBin(f1-45); //45-15ns before prompt peak
     double time_bin_dark_high = Timing->FindBin(f1-15);
     double dark_timing_integral = Timing->Integral(time_bin_dark_low, time_bin_dark_high);
     double dark_rate = (dark_timing_integral)/(30*1.0e-9*window_count);
@@ -546,26 +593,41 @@ int main (int argc, char* argv[])
     cout << "Late Hit Percent " << late_pct << endl;
     cout << "Dark Rate " << dark_rate << endl;
 
+    double dark_rate_correction = (coincidence_integral - dark_timing_integral)/(window_count)*100;
+    cout << dark_timing_integral << endl;
+    cout << coincidence_integral << endl;
+    cout << window_count << endl;
+    cout << dark_rate_correction << endl;
+
+
     if(mode == 2){
       for(size_t j = 0; j < trigger_time.size(); j++){
         double dt = (pmt_time[j] - trigger_time[j]);
+        double q = kCharge[j];
         if(dt > f1 - 8 && dt < f1 + 8){
           prompt_hits->Fill(dt);
+          prompt_hits_charge->Fill(q);
         }
-        else if(dt > f1 + 8 && dt < f1 + 50){
+        else if(dt > f1 + 8 && dt < f1 + length_late){
           late_hits->Fill(dt);
+          late_hits_charge->Fill(q);
         }
         else{
           dark_hits->Fill(dt);
+          dark_hits_charge->Fill(q);
         }
       }
       for(size_t j = 0; j < prompt_pulse.size(); j++){
         // Only select pulses with correct late && prompt pulsing time
-        if(late_pulse[j] > f1 + 8 && late_pulse[j] < f1 + 50 &&  
-           prompt_pulse[j] > f1 - 8 && prompt_pulse[j] < f1 + 8){
+        if(late_pulse[j] > f1 + 8 && late_pulse[j] < f1 + length_late &&  
+          prompt_pulse[j] > f1 - 8 && prompt_pulse[j] < f1 + 8){
           double_hits_prompt->Fill(prompt_pulse[j]);
+          double_hits_prompt_charge->Fill(prompt_q[j]);
           prompt_hits->Fill(prompt_pulse[j], -1);
+          prompt_hits_charge->Fill(prompt_q[j], -1);
           double_hits_late->Fill(late_pulse[j]);
+          double_hits_late_charge->Fill(late_q[j]);
+          late_hits_charge->Fill(late_q[j], -1);
           late_hits->Fill(late_pulse[j], -1);
         }
       }
@@ -619,6 +681,39 @@ int main (int argc, char* argv[])
       cout << "Prompt Mean " << f1 << endl;
     }
 
+    // draw the fits
+    TCanvas *c3 = new TCanvas("c3","c3",800,600);
+    Timing->Fit("gaus","q","",low_time_bin_fit, high_time_bin_fit);
+    gPad->SetLogy();
+    prompt_hits->SetStats(0);
+    prompt_hits->SetLineColor(kBlack);
+    prompt_hits->Draw();
+    late_hits->SetLineColor(kRed);
+    late_hits->SetLineStyle(2);
+    late_hits->Draw("same");
+    double_hits_prompt->SetLineColor(kBlue);
+    double_hits_prompt->SetLineStyle(3);
+    double_hits_prompt->Draw("same");
+    double_hits_late->SetLineColor(kCyan);
+    double_hits_late->SetLineStyle(5);
+    double_hits_late->SetMarkerStyle(5);
+    double_hits_late->Draw("same");
+    dark_hits->SetLineColor(kGreen);
+    dark_hits->SetLineStyle(4);
+    dark_hits->Draw("same");
+    TLegend *t1 = new TLegend(0.6, 0.6, 0.8, 0.8);
+    t1->SetBorderSize(0);;
+    t1->SetTextFont(132);
+    t1->SetFillColor(0);
+    t1->AddEntry(prompt_hits, "Prompt");
+    t1->AddEntry(late_hits, "Late");
+    t1->AddEntry(double_hits_prompt, "Double (1)");
+    t1->AddEntry(double_hits_late, "Double (2)");
+    t1->AddEntry(dark_hits, "Dark");
+    t1->Draw("same");
+    c3->SetLogy();
+    c3->Update();
+
     // Output Histograms to File
     if (argc > 2){
       TFile f(argv[2],"new");
@@ -639,6 +734,23 @@ int main (int argc, char* argv[])
         dark_hits->Write();
         double_hits_prompt->Write();
         double_hits_late->Write();
+        prompt_hits_charge->Write();
+        late_hits_charge->Write();
+        dark_hits_charge->Write();
+        double_hits_prompt_charge->Write();
+        double_hits_late_charge->Write();
+        prompt_charge->Write();
+      }
+      if(mode == 3){
+        parameter0->Write();
+        parameter1->Write();
+        parameter2->Write();
+        parameter3->Write();
+        parameter4->Write();
+        parameter5->Write();
+        parameter6->Write();
+        parameter7->Write();
+        parameter8->Write();
       }
     }
 
@@ -649,6 +761,16 @@ int main (int argc, char* argv[])
     delete peaks;
     delete average_waveform;
 
+    delete parameter0;
+    delete parameter1;
+    delete parameter2;
+    delete parameter3;
+    delete parameter4;
+    delete parameter5;
+    delete parameter6;
+    delete parameter7;
+    delete parameter8;
+
     delete trigger_pedestals;
     delete average_waveform_trigger;
     delete Timing;
@@ -657,78 +779,15 @@ int main (int argc, char* argv[])
     delete dark_hits;
     delete double_hits_prompt;
     delete double_hits_late;
+    delete prompt_hits_charge;
+    delete late_hits_charge;
+    delete dark_hits_charge;
+    delete double_hits_prompt_charge;
+    delete double_hits_late_charge;
+    delete prompt_charge;
     delete fit_waveform;
 
-    return 0; // successfully terminated
-}
-
-DataCluster * Init_Data(DataSet *dataset){
-
-  DataCluster * datacluster = new DataCluster[1];
-
-  /*
-   * Get dataspace of the dataset.
-   */
-  datacluster->dataset = dataset;
-  datacluster->dataspace = datacluster->dataset->getSpace();
-
-  /*
-   * Get the dimension size of each dimension in the dataspace and
-   * display them.
-   */
-
-  hsize_t dims_out[2];
-  datacluster->dataspace.getSimpleExtentDims( dims_out, NULL);
-  datacluster->trace_length = (unsigned long)(dims_out[1]);
-  datacluster->n_traces = (unsigned long)(dims_out[0]);
-
-  // Data Buffer
-  datacluster->data_out = new char[datacluster->trace_length]; // Scope data is size char
-  for (unsigned long i = 0; i < datacluster->trace_length; i++) datacluster->data_out[i]= 0;
-
-  /*
-   * Define hyperslab in the dataset.
-   */
-
-  datacluster->offset[0] = 0;
-  datacluster->offset[1] = 0;
-  datacluster->count[0] = 1;
-  datacluster->count[1] = datacluster->trace_length;
-  datacluster->dataspace.selectHyperslab( H5S_SELECT_SET, datacluster->count, datacluster->offset );
-
-  /*
-   * Define the memory dataspace.
-   */
-
-  hsize_t dimsm[2]; /* memory space dimensions */
-  dimsm[0] = dims_out[0];
-  dimsm[1] = dims_out[1];
-  datacluster->memspace = DataSpace( RANK_OUT, dimsm );
-
-  /*
-   * Define memory hyperslab.
-   */
-
-  datacluster->offset_out[0] = 0;
-  datacluster->offset_out[1] = 0;
-  datacluster->count_out[0] = 1;
-  datacluster->count_out[1] = datacluster->trace_length;
-  datacluster->memspace.selectHyperslab( H5S_SELECT_SET, datacluster->count_out, datacluster->offset_out );
-
-  return datacluster;
-}
-
-/* Method: Read_Trace(DataCluster *datacluster, unsigned long trace_index)
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * Updates a DataCluster datacluster so that its buffer contains trace number trace_index
- */
-
-int Read_Trace(DataCluster *datacluster, unsigned long trace_index){
-  datacluster->offset[0]= (hsize_t)trace_index;
-  datacluster->dataspace.selectHyperslab( H5S_SELECT_SET, datacluster->count, datacluster->offset );
-  datacluster->memspace.selectHyperslab( H5S_SELECT_SET, datacluster->count_out, datacluster->offset_out );
-  datacluster->dataset->read( datacluster->data_out, PredType::NATIVE_CHAR, datacluster->memspace, datacluster->dataspace );
-  return 0; // No protection...
+    return 0;
 }
 
 double GetSampling(char* datafile){
@@ -821,27 +880,3 @@ int GetWindowStart(char* datafile){
 
     return window_count;
 }
-
-double Lognormal(double t, double tau, double sigma, double mag){
-    double q = exp(-0.5 * pow(log(t / tau) / sigma, 2.0));
-    q *= mag / (t * sigma * sqrt(2 * TMath::Pi()));
-    return -q;
-}
-
-double SingleLognormal(Double_t* x, Double_t* par){
-    return Lognormal(x[0], par[0], par[1], par[2]);
-}
-
-double DoubleLognormal(Double_t* x, Double_t* par){
-    double q = Lognormal(x[0], par[0], par[1], par[2]);
-    q += Lognormal(x[0], par[3], par[4], par[5]);
-    return q;
-}
-
-double TripleLognormal(Double_t* x, Double_t* par){
-    double q = Lognormal(x[0], par[0], par[1], par[2]);
-    q += Lognormal(x[0], par[3], par[4], par[5]);
-    q += Lognormal(x[0], par[6], par[7], par[8]);
-    return q;
-}
-

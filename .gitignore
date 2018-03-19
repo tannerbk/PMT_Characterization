@@ -3,3 +3,4 @@ afterpulsing/
 *.o
 *.d
 *.swp
+*.exe
