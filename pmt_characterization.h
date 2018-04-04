@@ -52,13 +52,13 @@ DataSet dataset_trigger;
 char* datafile;
 
 /* Scope Settings */
-const string trigger_channel = "channel1";
-const string pmt_channel = "channel2";
+const string trigger_channel = "channel2";
+const string pmt_channel = "channel3";
 unsigned long window_width;
 
 /* Plot Settings */
-const int high_voltage = 1840;
-TString box_title = Form("R5912-MOD");
+const int high_voltage = 2000;
+TString box_title = Form("SNO PMT");
 
 /* Various modes */
 int mode;
@@ -98,7 +98,7 @@ vector<double> kCharge;
 // Histograms for both channels (trigger and analysis channel)
 TH1F *pedestals = new TH1F("Pedestal","",100000,-1,1);
 TH1F *variances = new TH1F("Variance","",500000,-0.1,1.0);
-TH1F *charges_signal = new TH1F("Charge","",800,-4.0,12.0);
+TH1F *charges_signal = new TH1F("Charge","",1200,-4.0,25.0);
 TH1F *peaks = new TH1F("Peaks","",5000,-1.0,0.1);
 TH1F *trigger_pedestals = new TH1F("Pedestal_Trigger","",100000,-1.0,1.0);
 

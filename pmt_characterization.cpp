@@ -3,6 +3,20 @@
 
 int main (int argc, char* argv[])
 {
+    if(argc == 1){
+        cout << "Help menu, here is how to run the code." << endl;
+        cout << "@argv[1] = text file listing .hdf5 files. Required." << endl;
+        cout << "@argv[2] = name of output root file (ex: histo.root). Required." << endl;
+        cout << "    by default calculated using the average waveform." << endl;
+        cout << "@argv[3] = the run mode type. Optional." << endl;
+        cout << "@argv[4] = length of the window to calculate the pedestal. Optional." << endl;
+        cout << "    0 = normal (default)" << endl;
+        cout << "    1 = debugging output" << endl;
+        cout << "    2 = separate pulse types" << endl;
+        cout << "    3 = waveform fitting" << endl;
+        return 0;
+    }
+
     // Datafile
     datafile = argv[1];
 
@@ -11,9 +25,14 @@ int main (int argc, char* argv[])
     // mode = 1: debugging output
     // mode = 2: separate pulse types in timing
     // mode = 3: write individual waveforms with triple lognormal fits to file
-    if(argc > 4){
-       mode = atoi(argv[4]);
-       cout << "Setting run mode: " << mode << endl;
+    if(argc > 3){
+       mode = atoi(argv[3]);
+       if(mode == 2){
+          cout << "Setting run mode to separate timing spectrum" << endl;
+       }
+       else if(mode == 3){
+          cout << "Setting run mode to fit lognormals to waveforms." << endl;
+       }
     }
     else{
        mode = 0;
@@ -28,7 +47,7 @@ int main (int argc, char* argv[])
     }
 
     double sampling_time = GetSampling(datafile)*1e9;
-    size_t length_trace = GetLength(datafile);
+    float length_trace = GetLength(datafile);
 
 
     // Create ROOT histograms
@@ -37,19 +56,27 @@ int main (int argc, char* argv[])
 
     TH1F *average_waveform_trigger = new TH1F("Average_Waveform_Trigger","",
         length_trace, 0, length_trace*sampling_time);
-    TH1F *Timing = new TH1F("Timing","",(length_trace)*sampling_time*2, 0,
-        (length_trace)*sampling_time);
-    
-    TH1F *prompt_hits = new TH1F("prompt","",(length_trace)*sampling_time*2, 0,
-        (length_trace)*sampling_time);
-    TH1F *late_hits = new TH1F("late","",(length_trace)*sampling_time, 0,
-        (length_trace)*sampling_time);
-    TH1F *double_hits_prompt = new TH1F("double_prompt","",(length_trace)*sampling_time, 0,
-        (length_trace)*sampling_time);
-    TH1F *double_hits_late = new TH1F("double_late","",(length_trace)*sampling_time, 0,
-        (length_trace)*sampling_time);
-    TH1F *dark_hits = new TH1F("dark","",(length_trace)*sampling_time, 0,
-            (length_trace)*sampling_time);
+    TH1F *Timing = new TH1F("Timing","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time); 
+    TH1F *prompt_hits = new TH1F("prompt","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
+    TH1F *late_hits = new TH1F("late","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
+    TH1F *double_hits_prompt = new TH1F("double_prompt","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
+    TH1F *double_hits_late = new TH1F("double_late","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
+    TH1F *dark_hits = new TH1F("dark","", length_trace*sampling_time*2,
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
+    TH1F *pre_hits = new TH1F("pre","", length_trace*sampling_time*2, 
+        -length_trace*sampling_time,
+        length_trace*sampling_time);
 
     TH1F *fit_waveform = new TH1F("Fit Waveform","", length_trace, 0, length_trace);
 
@@ -94,8 +121,8 @@ int main (int argc, char* argv[])
 
     // Size of the pedestal window, in samples
     // Either user set or taken from the average waveform
-    if(argc > 3){
-      window_width = atoi(argv[3]);
+    if(argc > 4){
+      window_width = atoi(argv[4]);
     }
     else{
       window_width = min(window_start, window_start_trigger) - 10/(dx*1e9);
@@ -508,15 +535,16 @@ int main (int argc, char* argv[])
     charges_signal->GetYaxis()->SetTitleFont(132);
     c1->Modified();
 
+    cout << endl;
     cout << " ----- PMT Charge Parameters ----- " << endl;
     if(mode == 1){
-      cout << "Electronic Noise Width is " << p22 << "pC" << endl;
-      cout << "Peak " << spe_mean << ", Valley " << min_function << endl;
-      cout << "The Charge FWHM is " << spe_sigma*2*sqrt(2*log(2)) << "pC" << endl;
-      cout << "High Charge Tail " << high_charge_entry * 100 / low_charge_entry << "%" << endl;
+      cout << "Electronic Noise Width is: " << p22 << "pC" << endl;
+      cout << "Peak: " << spe_mean << ", Valley " << min_function << endl;
+      cout << "The Charge FWHM is: " << spe_sigma*2*sqrt(2*log(2)) << "pC" << endl;
+      cout << "High Charge Tail: " << high_charge_entry * 100 / low_charge_entry << "%" << endl;
     }
-    cout << "The charge peak is " << spe_mean << "pC" << endl;
-    cout << "The charge peak-to-valley is " << Peak_to_valley << endl;
+    cout << "The charge peak is: " << spe_mean << "pC" << endl;
+    cout << "The charge peak-to-valley is: " << Peak_to_valley << endl;
 
     // get time difference
     for(size_t j = 0; j < trigger_time.size(); j++){
@@ -529,7 +557,7 @@ int main (int argc, char* argv[])
 
     // Find the half-heights to integrate around
     float low_time_bin_fit = 0;
-    for(int i = time_bin_max; i > time_bin_max - 10; i--){
+    for(int i = time_bin_max; i > time_bin_max - 100; i--){
        if(Timing->GetBinContent(i) < time_bin_max_content/10){
           low_time_bin_fit = time_axis->GetBinCenter(i);
           break;
@@ -537,7 +565,7 @@ int main (int argc, char* argv[])
     }
 
     float high_time_bin_fit = 0;
-    for(int i = time_bin_max; i < time_bin_max + 10; i++){
+    for(int i = time_bin_max; i < time_bin_max + 100; i++){
        if(Timing->GetBinContent(i) < time_bin_max_content/10){
           high_time_bin_fit = time_axis->GetBinCenter(i);
           break;
@@ -582,23 +610,25 @@ int main (int argc, char* argv[])
     double late_timing_integral = Timing->Integral(time_bin_late_low, time_bin_late_high);
     double late_pct = (late_timing_integral)/(coincidence_timing_integral)*100;
 
-    double time_bin_dark_low = Timing->FindBin(f1-45); //45-15ns before prompt peak
+    double time_bin_dark_low = Timing->FindBin(f1-80); //80-30ns before prompt peak
     double time_bin_dark_high = Timing->FindBin(f1-15);
     double dark_timing_integral = Timing->Integral(time_bin_dark_low, time_bin_dark_high);
     double dark_rate = (dark_timing_integral)/(30*1.0e-9*window_count);
 
+    cout << endl;
     cout << " ----- PMT Rate Parameters ----- " << endl;
-    cout << "Coincidence percent of all hits " << coincidence_pct << endl;
-    cout << "Coincidence perecent of prompt hits " << coincidence_timing_pct << endl;
-    cout << "Late Hit Percent " << late_pct << endl;
-    cout << "Dark Rate " << dark_rate << endl;
+    cout << "Coincidence percent of all hits: " << coincidence_pct << endl;
+    cout << "Coincidence perecent of prompt hits: " << coincidence_timing_pct << endl;
+    cout << "Late Hit Percent: " << late_pct << endl;
+    cout << "Dark Rate: " << dark_rate << endl;
 
     double dark_rate_correction = (coincidence_integral - dark_timing_integral)/(window_count)*100;
-    cout << dark_timing_integral << endl;
-    cout << coincidence_integral << endl;
-    cout << window_count << endl;
-    cout << dark_rate_correction << endl;
-
+    if(mode == 1){
+      cout << dark_timing_integral << endl;
+      cout << coincidence_integral << endl;
+      cout << window_count << endl;
+      cout << dark_rate_correction << endl;
+    }
 
     if(mode == 2){
       for(size_t j = 0; j < trigger_time.size(); j++){
@@ -612,9 +642,12 @@ int main (int argc, char* argv[])
           late_hits->Fill(dt);
           late_hits_charge->Fill(q);
         }
-        else{
+        else if(dt < f1 - 15 && dt > f1 - 80){
           dark_hits->Fill(dt);
           dark_hits_charge->Fill(q);
+        }
+        else if(dt < f1 - 8 && dt > f1 - 15){
+          pre_hits->Fill(dt);
         }
       }
       for(size_t j = 0; j < prompt_pulse.size(); j++){
@@ -675,7 +708,6 @@ int main (int argc, char* argv[])
     Timing->GetXaxis()->SetRangeUser(40.0, 105.0);
     c2->Modified();
 
-    cout << " ----- PMT Rate Parameters ----- " << endl;
     cout << "Prompt Sigma " << f2 << endl;
     if(mode == 1){
       cout << "Prompt Mean " << f1 << endl;
@@ -689,18 +721,21 @@ int main (int argc, char* argv[])
     prompt_hits->SetLineColor(kBlack);
     prompt_hits->Draw();
     late_hits->SetLineColor(kRed);
-    late_hits->SetLineStyle(2);
+    //late_hits->SetLineStyle(2);
     late_hits->Draw("same");
     double_hits_prompt->SetLineColor(kBlue);
-    double_hits_prompt->SetLineStyle(3);
+    //double_hits_prompt->SetLineStyle(3);
     double_hits_prompt->Draw("same");
     double_hits_late->SetLineColor(kCyan);
-    double_hits_late->SetLineStyle(5);
-    double_hits_late->SetMarkerStyle(5);
+    //double_hits_late->SetLineStyle(5);
+    //double_hits_late->SetMarkerStyle(5);
     double_hits_late->Draw("same");
     dark_hits->SetLineColor(kGreen);
-    dark_hits->SetLineStyle(4);
+    //dark_hits->SetLineStyle(4);
     dark_hits->Draw("same");
+    pre_hits->SetLineColor(kViolet);
+    //pre_hits->SetLineStyle(4);
+    pre_hits->Draw("same");
     TLegend *t1 = new TLegend(0.6, 0.6, 0.8, 0.8);
     t1->SetBorderSize(0);;
     t1->SetTextFont(132);
@@ -732,6 +767,7 @@ int main (int argc, char* argv[])
         prompt_hits->Write();
         late_hits->Write();
         dark_hits->Write();
+        pre_hits->Write();
         double_hits_prompt->Write();
         double_hits_late->Write();
         prompt_hits_charge->Write();
@@ -777,6 +813,7 @@ int main (int argc, char* argv[])
     delete prompt_hits;
     delete late_hits;
     delete dark_hits;
+    delete pre_hits;
     delete double_hits_prompt;
     delete double_hits_late;
     delete prompt_hits_charge;
