@@ -1,16 +1,16 @@
 import os
 import ROOT
 import sys
-#from subprocess import Popen, PIPE, call
 import subprocess
 import argparse
 import psycopg2
 
-# TO-DO, make inputs
 OUTPUT = "/home/www/pmt_characterization_website/app/static/images/"
 
 def connect_to_db():
-
+    '''
+    Connect to the PMT testing database.
+    '''
     conn = psycopg2.connect('host=%s dbname=%s user=%s password=%s' % \
                             ('localhost', 'pmt_testing', 'postgres', 'b33feroni'))
 
@@ -20,22 +20,28 @@ def connect_to_db():
 
 def write_to_db(source, pmtid, pmt_type, hv,
                 tts, lp, ap, pp, dr,
-                q_peak, q_width, q_high, q_pv):
-
-
+                q_peak, q_width, q_high, q_pv,
+                entries, thresh, cr, comp):
+    '''
+    Write to PMT testing information to the database.
+    '''
     conn, cursor = connect_to_db()
 
     cursor.execute("INSERT INTO pmt_information "
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
-                   "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, charge_peak_to_valley) "
-                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f)" % \
-                   (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv))
+                   "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
+                   "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation) "
+                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s')" % \
+                   (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
+                    q_peak, q_width, q_high, q_pv, entries, thresh, cr, comp))
 
     conn.commit()
 
 
 def fit_charge(hq):
-
+    '''
+    Fit the charge distribution to extract relevant parameters.
+    '''
     c = ROOT.TCanvas("c", "c", 800, 600)
 
     hq.GetXaxis().SetRangeUser(0.3, 4.0)
@@ -95,6 +101,8 @@ def fit_timing(ht):
     # To-do get bin-width automatically
     dark_rate = p0/(0.1*1e-9*ht.GetEntries())
 
+    print "DRC:", p0, ht.GetEntries()
+
     c_late_low = c1 + 10.0
     c_late_high = c1 + 60.0
     b_low = ht.FindBin(c_late_low)
@@ -134,7 +142,11 @@ def open_tree(fname, threshold):
     ht = ROOT.TH1D("time","time",2000,-50,150)
     hq = ROOT.TH1D("charge","charge",600,-0.5,5.5)
 
+    ht.SetDirectory(0)
+    hq.SetDirectory(0)
+
     print "Entries:", t.GetEntries()
+    coincidence_rate = 0.0
     for i in range(t.GetEntries()):
 
         t.GetEntry(i)
@@ -143,9 +155,13 @@ def open_tree(fname, threshold):
 
         if(t.peak_voltage > threshold): continue
 
+        coincidence_rate += 1.0
+
         ht.Fill(t.deltat)
 
-    return ht, hq
+    coincidence_rate /= float(t.GetEntries())
+
+    return ht, hq, t.GetEntries(), coincidence_rate
 
 
 def run_analysis(datafile, output_name, pedestal):
@@ -203,6 +219,7 @@ if __name__=='__main__':
     parser.add_argument('-v', '--high-voltage', type=int, required=True)
     parser.add_argument('-i', '--pmt-id', type=str, required=True)
     parser.add_argument('-p', '--pmt-type', type=str, required=True)
+    parser.add_argument('-c', '--magnetic-compensation', type=str, required=True)
     parser.add_argument('-w', '--pedestal', type=int, default=200)
     parser.add_argument('-t', '--threshold', type=float, default=-5.0)
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
@@ -224,7 +241,7 @@ if __name__=='__main__':
         sys.exit(1) 
        
 
-    output_name = args.pmt_id + "_" + str(args.high_voltage) + "V"
+    output_name = args.pmt_id + "_" + str(args.high_voltage) + "V" + "_" + args.magnetic_compensation
     dirname = OUTPUT + output_name
 
     try:
@@ -242,7 +259,7 @@ if __name__=='__main__':
 
     root_file = dirname + "/" + output_name + "_lappd_0_gr0_ch1.root"  
 
-    ht, hq = open_tree(root_file, args.threshold)
+    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold)
 
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
@@ -256,7 +273,8 @@ if __name__=='__main__':
 
     # FIXME..
     write_to_db(args.source, args.pmt_id, args.pmt_type, args.high_voltage, tts, \
-                5.0, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, 2.5)
+                5.0, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
+                2.5, entries, -5.0, coinc_rate, args.magnetic_compensation)
 
     write_root_file(args.root_file, ht, hq)
 
