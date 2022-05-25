@@ -81,7 +81,7 @@ def fit_charge(hq):
     return qmean, qsigma, high_charge_pct
 
 
-def fit_timing(ht):
+def fit_timing(ht, entries):
 
     c = ROOT.TCanvas("c", "c", 800, 600)
 
@@ -95,19 +95,32 @@ def fit_timing(ht):
     tts = fit.GetParameter(2)
 
     dark_fit = ROOT.TF1("pol0", "pol0", c1 - 60.0, c1 - 10.0)
-    ht.Fit(dark_fit, "Q0", "", c1 - 60.0, c1 - 10.0)
+    ht.Fit(dark_fit, "LQ0", "", c1 - 60.0, c1 - 10.0)
 
     p0 = dark_fit.GetParameter(0)
     # To-do get bin-width automatically
-    dark_rate = p0/(0.1*1e-9*ht.GetEntries())
+    dark_rate = p0/(0.1*1e-9*entries)
 
-    print "DRC:", p0, ht.GetEntries()
+    print "DRC:", p0, ht.GetEntries(), dark_rate
 
-    c_late_low = c1 + 10.0
+    c_prompt_low = c1 - 4.0
+    c_late_low = c1 + 4.0
     c_late_high = c1 + 60.0
+
+    bp_low = ht.FindBin(c_prompt_low)
     b_low = ht.FindBin(c_late_low)
     b_high = ht.FindBin(c_late_high)
+
     late_int = ht.Integral(b_low, b_high)
+    prompt_int = ht.Integral(bp_low, b_low)
+
+    late_int_drc = (c_late_high - c_late_low)*1e-9*dark_rate*entries
+    prompt_int_drc = (c_late_low - c_prompt_low)*1e-9*dark_rate*entries
+
+    total_late = (late_int - late_int_drc) 
+    total_prompt = (prompt_int - prompt_int_drc)
+
+    fr_late = float(total_late)*100/total_prompt
 
     ht.Draw("")
 
@@ -129,9 +142,10 @@ def fit_timing(ht):
     c.Print("time.png")
 
     print ("TTS: %.2f ns" % tts)
-    print ("Dark rate: %.2f Hz" % dark_rate)
+    print ("Dark rate: %.1f Hz" % dark_rate)
+    print ("Late fraction: %.2f pct", fr_late)
 
-    return tts, dark_rate
+    return tts, dark_rate, fr_late
 
 
 def open_tree(fname, threshold):
@@ -224,6 +238,7 @@ if __name__=='__main__':
     parser.add_argument('-t', '--threshold', type=float, default=-5.0)
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
     parser.add_argument('-o', '--root-file', type=str, default="data.root")
+    parser.add_argument('-x', '--save', action="store_true")
     args = parser.parse_args()
 
     source_options = ["Cherenkov", "LED"]
@@ -267,14 +282,15 @@ if __name__=='__main__':
     print ("PMT ID %s" % args.pmt_id)
     print ("HV: %d V" % args.high_voltage)
 
-    tts, dark_rate = fit_timing(ht)
+    tts, dark_rate, fr_late = fit_timing(ht, entries)
 
     q_mean, q_width, high_charge_pct = fit_charge(hq)
 
     # FIXME..
-    write_to_db(args.source, args.pmt_id, args.pmt_type, args.high_voltage, tts, \
-                5.0, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
-                2.5, entries, -5.0, coinc_rate, args.magnetic_compensation)
+    if args.save:
+        write_to_db(args.source, args.pmt_id, args.pmt_type, args.high_voltage, tts, \
+                    fr_late, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
+                    2.5, entries, -5.0, coinc_rate, args.magnetic_compensation)
 
-    write_root_file(args.root_file, ht, hq)
+        write_root_file(args.root_file, ht, hq)
 
