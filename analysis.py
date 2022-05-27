@@ -60,13 +60,13 @@ def fit_charge(hq):
     qmean = fit.GetParameter(1)
     qsigma = fit.GetParameter(2)
 
-    hq.GetXaxis().SetRangeUser(-0.3, 4.0)
+    hq.GetXaxis().SetRangeUser(-0.3, 7.0)
     hq.GetYaxis().SetRangeUser(0.0, m1*1.25)
 
     c.Print("charge.png")
 
-    b1 = hq.FindBin(qmean - 2*qsigma)
-    b2 = hq.FindBin(qmean + 2*qsigma)
+    b1 = hq.FindBin(qmean - 3*qsigma)
+    b2 = hq.FindBin(qmean + 3*qsigma)
     b3 = hq.FindBin(10.0)
 
     total_int = hq.Integral(b1, b3)
@@ -94,18 +94,19 @@ def fit_timing(ht, entries):
 
     tts = fit.GetParameter(2)
 
-    dark_fit = ROOT.TF1("pol0", "pol0", c1 - 60.0, c1 - 10.0)
-    ht.Fit(dark_fit, "LQ0", "", c1 - 60.0, c1 - 10.0)
+    df_low = 40
+    df_high = 10
+
+    dark_fit = ROOT.TF1("pol0", "pol0", c1 - df_low, c1 - df_high)
+    ht.Fit(dark_fit, "LQ0", "", c1 - df_low, c1 - df_high)
 
     p0 = dark_fit.GetParameter(0)
     # To-do get bin-width automatically
     dark_rate = p0/(0.1*1e-9*entries)
 
-    print "DRC:", p0, ht.GetEntries(), dark_rate
-
     c_prompt_low = c1 - 4.0
     c_late_low = c1 + 4.0
-    c_late_high = c1 + 60.0
+    c_late_high = c1 + 40.0
 
     bp_low = ht.FindBin(c_prompt_low)
     b_low = ht.FindBin(c_late_low)
@@ -127,13 +128,13 @@ def fit_timing(ht, entries):
     fit.Draw("same")
     dark_fit.Draw("same")
 
-    ht.GetXaxis().SetRangeUser(c1 - 10.0, c1 + 10.0)
+    ht.GetXaxis().SetRangeUser(c1 - 6.0, c1 + 10.0)
 
     c.Update()
 
     c.Print("time_zoomed.png")
 
-    ht.GetXaxis().SetRangeUser(0.0, 150.0)
+    ht.GetXaxis().SetRangeUser(-20.0, 100.0)
 
     c.SetLogy()
 
@@ -143,7 +144,7 @@ def fit_timing(ht, entries):
 
     print ("TTS: %.2f ns" % tts)
     print ("Dark rate: %.1f Hz" % dark_rate)
-    print ("Late fraction: %.2f pct", fr_late)
+    print ("Late fraction: %.2f pct" % fr_late)
 
     return tts, dark_rate, fr_late
 
@@ -154,7 +155,7 @@ def open_tree(fname, threshold):
     t = f.Get("output")
 
     ht = ROOT.TH1D("time","time",2000,-50,150)
-    hq = ROOT.TH1D("charge","charge",600,-0.5,5.5)
+    hq = ROOT.TH1D("charge","charge",600,-0.5,11.5)
 
     ht.SetDirectory(0)
     hq.SetDirectory(0)
@@ -164,6 +165,11 @@ def open_tree(fname, threshold):
     for i in range(t.GetEntries()):
 
         t.GetEntry(i)
+
+        # Bad pedestal window
+        if(t.stddev > 0.04): continue
+
+        if(t.trigger_charge < 10.0): continue
 
         hq.Fill(t.charge - t.charge_empty)
 
@@ -248,10 +254,10 @@ if __name__=='__main__':
         print ("Options:", source_options)
         sys.exit(1)
 
-    pmt_options = ['R7081', 'R11780', 'R14688']
+    pmt_options = ['R7081', 'R11780', 'R14688', 'H11934']
 
     if args.pmt_type not in pmt_options:
-        print ("Invalid pmt type.")
+        print ("Invalid pmt type:", args.pmt_type)
         print ("Options:", pmt_options)
         sys.exit(1) 
        

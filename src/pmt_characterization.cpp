@@ -82,6 +82,7 @@ void PMTChar::data_structure(TTree* output){
     output->Branch("charge", &data.charge);
     output->Branch("charge_empty", &data.charge_empty);
     output->Branch("trigger_charge", &data.trigger_charge);
+    output->Branch("trigger_charge_empty", &data.trigger_charge_empty);
 
     output->Branch("samples_above_threshold", &data.samples_above_threshold);
     output->Branch("ncrossings", &data.ncrossings);
@@ -218,7 +219,9 @@ void PMTChar::pmt_characterization(char* datafile,
             cout << "Resolution:       " << dy << " V" << endl;
             cout << "Trace length:     " << window_length << " samples or " << window_length*dx << " ns." << endl;
             cout << "Pedestal window:  " << sample_offset*dx << " - " << pedestal_window*dx << " ns "
+            //cout << "Pedestal window:  " << pedestal_window*dx << " " << (window_length - sample_offset_last)*dx << " ns "
                  << "or " << sample_offset << " - " << pedestal_window << " samples." << endl;
+                 //<< "or " << pedestal_window << " - " << (window_length - sample_offset_last) << " samples." << endl;
             cout << "Scanning:         " << pedestal_window*dx << " - " << window_length - sample_offset_last 
                  << " ns or " << pedestal_window << " - " << window_length - sample_offset << " samples." << endl;
             cout << " * * * * * * * * * * * * * * * * * * * " << endl;
@@ -259,6 +262,7 @@ void PMTChar::pmt_characterization(char* datafile,
             std::vector<double> pedestals = fTools.calculate_pedestals(dataclusters,
                                                                        sample_offset,
                                                                        pedestal_window,
+                                                                       //window_length - sample_offset_last,
                                                                        dy);
 
             // Baseline calculation for each channel
@@ -271,11 +275,13 @@ void PMTChar::pmt_characterization(char* datafile,
             data.stddev = fTools.calculate_stddev(dataclusters[0],
                                                   sample_offset,
                                                   pedestal_window,
+                                                  //window_length - sample_offset_last,
                                                   data.pedestal, dy);
 
             data.stddev_trigger = fTools.calculate_stddev(dataclusters[1],
                                                           sample_offset,
                                                           pedestal_window,
+                                                          //window_length - sample_offset_last,
                                                           data.pedestal_trigger, dy);
 
             // Location of the peak in samples
@@ -298,7 +304,10 @@ void PMTChar::pmt_characterization(char* datafile,
             data.ncrossings = 0;
 
             // Loop through full window looking for pulses that crossed threshold.
-            for(unsigned int i = sample_offset; i < (window_length - sample_offset_last); i++){
+            //for(unsigned int i = sample_offset; i < (window_length - sample_offset_last); i++){
+            // Loop through window after pedestal looking for pulses that crossed threshold.
+            for(unsigned int i = pedestal_window; i < (window_length - sample_offset_last); i++){
+            //for(unsigned int i = sample_offset; i < pedestal_window; i++){
 
                 double voltage = fTools.get_voltage(i, datacluster, data.pedestal, dy);
                 double trigger_voltage = fTools.get_voltage(i, datacluster_trigger, data.pedestal_trigger, dy);
