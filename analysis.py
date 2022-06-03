@@ -87,15 +87,15 @@ def fit_timing(ht, entries):
 
     m1 = ht.GetMaximumBin()
     c1 = ht.GetBinCenter(m1)
-    fit_range = 2.0
+    fit_range = 0.4
 
     fit = ROOT.TF1("gaus", "gaus", c1 - fit_range, c1 + fit_range)
     ht.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
 
     tts = fit.GetParameter(2)
 
-    df_low = 40
-    df_high = 10
+    df_low = 16
+    df_high = 6
 
     dark_fit = ROOT.TF1("pol0", "pol0", c1 - df_low, c1 - df_high)
     ht.Fit(dark_fit, "LQ0", "", c1 - df_low, c1 - df_high)
@@ -142,14 +142,15 @@ def fit_timing(ht, entries):
 
     c.Print("time.png")
 
-    print ("TTS: %.2f ns" % tts)
+    print ("TTS (sigma): %.2f ns" % tts)
+    print ("TTS (FWHM): %.2f ns" % tts*2.355)
     print ("Dark rate: %.1f Hz" % dark_rate)
     print ("Late fraction: %.2f pct" % fr_late)
 
     return tts, dark_rate, fr_late
 
 
-def open_tree(fname, threshold):
+def open_tree(fname, threshold, trigger_q_cut):
 
     f = ROOT.TFile.Open(fname)
     t = f.Get("output")
@@ -169,7 +170,7 @@ def open_tree(fname, threshold):
         # Bad pedestal window
         if(t.stddev > 0.04): continue
 
-        if(t.trigger_charge < 10.0): continue
+        if(t.trigger_charge < trigger_q_cut): continue
 
         hq.Fill(t.charge - t.charge_empty)
 
@@ -190,7 +191,7 @@ def run_analysis(datafile, output_name, pedestal):
     command = ("/data/snoplus/home/tannerbk/pmt_characterization/src/run_pmt_characterization %s %s "
                "lappd_0 gr0 ch1 gr0 ch0 gr0 ch2 %d" % (datafile, output_name, pedestal))
 
-    print ("Running:", command)
+    print ("Running: %s" % command)
 
     commands = command.split()
 
@@ -240,6 +241,7 @@ if __name__=='__main__':
     parser.add_argument('-i', '--pmt-id', type=str, required=True)
     parser.add_argument('-p', '--pmt-type', type=str, required=True)
     parser.add_argument('-c', '--magnetic-compensation', type=str, required=True)
+    parser.add_argument('-q', '--trigger-q-cut', type=float, default=10.0)
     parser.add_argument('-w', '--pedestal', type=int, default=200)
     parser.add_argument('-t', '--threshold', type=float, default=-5.0)
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
@@ -247,22 +249,26 @@ if __name__=='__main__':
     parser.add_argument('-x', '--save', action="store_true")
     args = parser.parse_args()
 
-    source_options = ["Cherenkov", "LED"]
+    source = args.source.upper()
+    pmt_id = args.pmt_id.upper()
+    pmt_type = args.pmt_type.upper() 
 
-    if args.source not in source_options:
+    source_options = ["CHERENKOV", "LED"]
+
+    if source not in source_options:
         print ("Invalid source.")
         print ("Options:", source_options)
         sys.exit(1)
 
     pmt_options = ['R7081', 'R11780', 'R14688', 'H11934']
 
-    if args.pmt_type not in pmt_options:
-        print ("Invalid pmt type:", args.pmt_type)
+    if pmt_type not in pmt_options:
+        print ("Invalid pmt type:", pmt_type)
         print ("Options:", pmt_options)
         sys.exit(1) 
        
 
-    output_name = args.pmt_id + "_" + str(args.high_voltage) + "V" + "_" + args.magnetic_compensation
+    output_name = pmt_id + "_" + str(args.high_voltage) + "V" + "_" + args.magnetic_compensation
     dirname = OUTPUT + output_name
 
     try:
@@ -280,12 +286,12 @@ if __name__=='__main__':
 
     root_file = dirname + "/" + output_name + "_lappd_0_gr0_ch1.root"  
 
-    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold)
+    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_q_cut)
 
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
 
-    print ("PMT ID %s" % args.pmt_id)
+    print ("PMT ID %s" % pmt_id)
     print ("HV: %d V" % args.high_voltage)
 
     tts, dark_rate, fr_late = fit_timing(ht, entries)
@@ -294,7 +300,7 @@ if __name__=='__main__':
 
     # FIXME..
     if args.save:
-        write_to_db(args.source, args.pmt_id, args.pmt_type, args.high_voltage, tts, \
+        write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     2.5, entries, -5.0, coinc_rate, args.magnetic_compensation)
 
