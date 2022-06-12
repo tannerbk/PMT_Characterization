@@ -21,7 +21,8 @@ def connect_to_db():
 def write_to_db(source, pmtid, pmt_type, hv,
                 tts, lp, ap, pp, dr,
                 q_peak, q_width, q_high, q_pv,
-                entries, thresh, cr, comp):
+                entries, thresh, cr, comp, comment,
+                tq_cut, t_thresh, settle):
     '''
     Write to PMT testing information to the database.
     '''
@@ -30,10 +31,12 @@ def write_to_db(source, pmtid, pmt_type, hv,
     cursor.execute("INSERT INTO pmt_information "
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
-                   "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation) "
-                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s')" % \
+                   "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
+                   "comment, trigger_q_cut, trigger_threshold, settling_time)"
+                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f)" % \
                    (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
-                    q_peak, q_width, q_high, q_pv, entries, thresh, cr, comp))
+                    q_peak, q_width, q_high, q_pv, entries, thresh, cr, \
+                    comp, comment, tq_cut, t_thresh, settle))
 
     conn.commit()
 
@@ -46,10 +49,10 @@ def fit_charge(hq):
 
     hq.GetXaxis().SetRangeUser(0.3, 4.0)
 
-    m1 = hq.GetMaximum()
+    mmax = hq.GetMaximum()
     b1 = hq.GetMaximumBin()
     c1 = hq.GetBinCenter(b1)
-    fit_range = 0.5
+    fit_range = 0.4
 
     fit = ROOT.TF1("gaus", "gaus", c1 - fit_range, c1 + fit_range)
     hq.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
@@ -60,8 +63,15 @@ def fit_charge(hq):
     qmean = fit.GetParameter(1)
     qsigma = fit.GetParameter(2)
 
+    hq.GetXaxis().SetRangeUser(0.2, 0.6)
+    mmin = hq.GetMinimum()
+
+    p_to_v = 0
+    if mmin > 0:
+        p_to_v = mmax/mmin
+
     hq.GetXaxis().SetRangeUser(-0.3, 7.0)
-    hq.GetYaxis().SetRangeUser(0.0, m1*1.25)
+    hq.GetYaxis().SetRangeUser(0.0, mmax*1.25)
 
     c.Print("charge.png")
 
@@ -77,8 +87,9 @@ def fit_charge(hq):
     print ("Charge mean: %.2f pC" % qmean)
     print ("Charge width: %.2f pC" % qsigma)
     print ("High charge rate: %.2f pct" % high_charge_pct)
+    print ("Peak to value: %.2f" % p_to_v)
 
-    return qmean, qsigma, high_charge_pct
+    return qmean, qsigma, high_charge_pct, p_to_v
 
 
 def fit_timing(ht, entries):
@@ -87,7 +98,7 @@ def fit_timing(ht, entries):
 
     m1 = ht.GetMaximumBin()
     c1 = ht.GetBinCenter(m1)
-    fit_range = 0.4
+    fit_range = 0.5
 
     fit = ROOT.TF1("gaus", "gaus", c1 - fit_range, c1 + fit_range)
     ht.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
@@ -143,7 +154,7 @@ def fit_timing(ht, entries):
     c.Print("time.png")
 
     print ("TTS (sigma): %.2f ns" % tts)
-    print ("TTS (FWHM): %.2f ns" % tts*2.355)
+    print ("TTS (FWHM): %.2f ns" % (float(tts)*2.355))
     print ("Dark rate: %.1f Hz" % dark_rate)
     print ("Late fraction: %.2f pct" % fr_late)
 
@@ -162,6 +173,7 @@ def open_tree(fname, threshold, trigger_q_cut):
     hq.SetDirectory(0)
 
     print "Entries:", t.GetEntries()
+    entries = 0
     coincidence_rate = 0.0
     for i in range(t.GetEntries()):
 
@@ -170,9 +182,11 @@ def open_tree(fname, threshold, trigger_q_cut):
         # Bad pedestal window
         if(t.stddev > 0.04): continue
 
+        hq.Fill(t.charge - t.charge_empty)
+
         if(t.trigger_charge < trigger_q_cut): continue
 
-        hq.Fill(t.charge - t.charge_empty)
+        entries += 1
 
         if(t.peak_voltage > threshold): continue
 
@@ -182,7 +196,7 @@ def open_tree(fname, threshold, trigger_q_cut):
 
     coincidence_rate /= float(t.GetEntries())
 
-    return ht, hq, t.GetEntries(), coincidence_rate
+    return ht, hq, entries, coincidence_rate
 
 
 def run_analysis(datafile, output_name, pedestal):
@@ -224,6 +238,7 @@ def pretty_plot(h, xname):
     h.SetTitle("")
     h.GetYaxis().SetTitle("Counts")
     h.GetXaxis().SetTitle(xname)
+    h.GetYaxis().SetTitleOffset(1.2)
     h.SetLineColor(ROOT.kBlack)
     h.SetMarkerColor(ROOT.kBlack)
     h.GetXaxis().SetLabelFont(132)
@@ -241,9 +256,12 @@ if __name__=='__main__':
     parser.add_argument('-i', '--pmt-id', type=str, required=True)
     parser.add_argument('-p', '--pmt-type', type=str, required=True)
     parser.add_argument('-c', '--magnetic-compensation', type=str, required=True)
+    parser.add_argument('-n', '--note', type=str, default="")
+    parser.add_argument('-m', '--settle-time', type=float, default=0.0)
     parser.add_argument('-q', '--trigger-q-cut', type=float, default=10.0)
     parser.add_argument('-w', '--pedestal', type=int, default=200)
     parser.add_argument('-t', '--threshold', type=float, default=-5.0)
+    parser.add_argument('-r', '--trigger-threshold', type=float, default=-40.0)
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
     parser.add_argument('-o', '--root-file', type=str, default="data.root")
     parser.add_argument('-x', '--save', action="store_true")
@@ -269,6 +287,10 @@ if __name__=='__main__':
        
 
     output_name = pmt_id + "_" + str(args.high_voltage) + "V" + "_" + args.magnetic_compensation
+    output_name += "_" + str(args.trigger_threshold) + "mV"
+    output_name += "_" + str(args.trigger_q_cut) + "pC"
+    output_name += "_" + args.note
+
     dirname = OUTPUT + output_name
 
     try:
@@ -296,13 +318,13 @@ if __name__=='__main__':
 
     tts, dark_rate, fr_late = fit_timing(ht, entries)
 
-    q_mean, q_width, high_charge_pct = fit_charge(hq)
+    q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq)
 
-    # FIXME..
     if args.save:
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
-                    2.5, entries, -5.0, coinc_rate, args.magnetic_compensation)
+                    p_to_v, entries, args.threshold, coinc_rate, args.magnetic_compensation, \
+                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time)
 
         write_root_file(args.root_file, ht, hq)
 
