@@ -3,12 +3,15 @@
 # input: four .root files outputted from analysis.py
 # output: layered histogram of four datasets for desired parameter
 # 
-# NOTE: currently, this is for 4 datasets and is designed to look at deltat
+# NOTE: code requires input of a directory with the to-be-compared .root files
 
 import ROOT # import the CERN ROOT module
 import sys
 from matplotlib import pyplot as plt
 import numpy as np
+
+# jordan 
+import glob
 
 def open_tree(tree):
 	
@@ -31,7 +34,8 @@ def open_tree(tree):
 		#print "Deltat, Charge:", tree.deltat, tree.charge
 		charge_c.append(tree.charge - tree.charge_empty)
 		deltat_c.append(tree.deltat)
-		
+	print "Extracting data from root file..."
+	
 	return deltat_c, charge_c
 
 def open_root(fi1):
@@ -42,6 +46,20 @@ def open_root(fi1):
 	# Get the data from the ROOT tree using open_tree function
 	ht1 = open_tree(tree1)
 	return ht1
+
+# takes in folder of .root files
+# outputs [(dt1, ch1), (dt2,ch2), ... , (dtn, chn)]
+# list[1][1] = dt1, list[n] = dtn, chn
+def read_dir(dir_name):
+	value_list = []
+	files = glob.glob(dir_name + "/*.root")
+	print "Opening directory..."
+	for file in files:
+		print "opening file..."
+		dt, ch = open_root(file)
+		value_list.append((dt,ch))
+		print "Data extracted from file"
+	return value_list
 
 def normalize(data, crop_min, crop_max, bw):
 	# crop dataset so that all datasets can be plotted together
@@ -75,86 +93,60 @@ def normalize(data, crop_min, crop_max, bw):
 
 	return bin_boundary, bin_height, width
 
-def plot(t1, t2, t3, t4, c1, c2, c3, c4):
-	f1 = str(input("Input HV for dataset 1:[numerical only] \n"))
-	f2 = str(input("Input HV for dataset 2 [numerical only]:\n"))
-	f3 = str(input("Input HV for dataset 3 [numerical only]:\n"))
-	f4 = str(input("Input HV for dataset 4 [numerical only]:\n"))	
+#def stack_peaks(x): this will be a future implementation
+#	index_min = max(range(len(values)), key=values.__getitem__)
 
-	tbb1, tbh1, tbw1 = normalize(t1,10, 20, .1)
-	tbb2, tbh2, tbw2 = normalize(t2,10, 20, .1)
-	tbb3, tbh3, tbw3 = normalize(t3,10, 20, .1)
-	tbb4, tbh4, tbw4 = normalize(t4,10, 20, .1)
+def plot(x):
 
-	cbb1, cbh1, cbw1 = normalize(c1,0, 6, .1)
-	cbb2, cbh2, cbw2 = normalize(c2,0, 6, .1)
-	cbb3, cbh3, cbw3 = normalize(c3,0, 6, .1)
-	cbb4, cbh4, cbw4 = normalize(c4,0, 6, .1)
-	
-	plt.figure(1)
-	plt.step(tbb1[:-1],tbh1,'k',linestyle='-',linewidth=1,where='mid')
-	plt.bar(tbb1[:-1],tbh1,width=tbw1,linewidth=0,alpha=0.3)
-	plt.step(tbb2[:-1],tbh2,'k',linestyle='--',linewidth=1,where='mid')
-	plt.bar(tbb2[:-1],tbh2,width=tbw2,linewidth=0,alpha=0.3)
-	plt.step(tbb3[:-1],tbh3,'k',linestyle=':',linewidth=1,where='mid')
-	plt.bar(tbb3[:-1],tbh3,width=tbw3,linewidth=0,alpha=0.3)
-	plt.step(tbb4[:-1],tbh4,'k',linestyle='-.',linewidth=1,where='mid')
-	plt.bar(tbb4[:-1],tbh4,width=tbw4,linewidth=0,alpha=0.3)
+	t_bin_boundary = []
+	t_bin_height = []
+	t_bin_width = []
 
-	plt.xlabel("Time [ns]")
-	plt.ylabel("Relative Intensity")
-	plt.legend([f1, f2, f3, f4])
+	ch_bin_boundary = []
+	ch_bin_height = []
+	ch_bin_width = []
 
-	plt.figure(2)
-	plt.step(cbb1[:-1],cbh1,'k',linestyle='-',linewidth=1,where='mid')
-	plt.bar(cbb1[:-1],cbh1,width=cbw1,linewidth=0,alpha=0.3)
-	plt.step(cbb2[:-1],cbh2,'k',linestyle='--',linewidth=1,where='mid')
-	plt.bar(cbb2[:-1],cbh2,width=cbw2,linewidth=0,alpha=0.3)
-	plt.step(cbb3[:-1],cbh3,'k',linestyle=':',linewidth=1,where='mid')
-	plt.bar(cbb3[:-1],cbh3,width=cbw3,linewidth=0,alpha=0.3)
-	plt.step(cbb4[:-1],cbh4,'k',linestyle='-.',linewidth=1,where='mid')
-	plt.bar(cbb4[:-1],cbh4,width=cbw4,linewidth=0,alpha=0.3)
+	for e in range(len(x)):
+		t_out = normalize(x[e][0], 10, 20, .1)
+		ch_out = normalize(x[e][1], 0, 6, .1)		
 
-	plt.xlabel("Charge [pC]")
-	plt.ylabel("Relative Intensity")
-	plt.legend([f1, f2, f3, f4])
+		t_bin_boundary.append(t_out[0])
+		t_bin_height.append(t_out[1])
+		t_bin_width.append(t_out[2])
 
-	plt.show()
+		ch_bin_boundary.append(ch_out[0])
+		ch_bin_height.append(ch_out[1])
+		ch_bin_width.append(ch_out[2])
 
-def plotnormed(y1):
-	# this function plots a histogram using the built-in
-	# 'normed' functionality which normalizes such that
-	# the binwidth*binheight = 1 for each hist. this 
-	# differs from the normalization conducted in
-	# normalize where sum(all bin heights) = 1
-	plt.figure(2)
-	plt.hist(y1,bins=1000,normed=True)
+	t_bin_boundary, t_bin_height, t_bin_width, \
+	ch_bin_boundary, ch_bin_height, ch_bin_width
+
+	fig1, ax1 = plt.subplots()
+	fig2, ax2 = plt.subplots()
+
+	for set in range(len(t_bin_boundary)):
+
+		fig1.suptitle("Delta t")
+		#ax1.bar(t_bin_boundary[set][:-1], t_bin_height[set],\
+		#width= t_bin_width[set])
+		ax1.step(t_bin_boundary[set][:-1],t_bin_height[set],\
+		where = 'mid')
+		ax1.set_xlabel("time [ns]")
+		ax2.set_ylabel("Relative Intensity")
+
+		fig2.suptitle("Charge Peak")
+		#ax2.bar(ch_bin_boundary[set][:-1], ch_bin_height[set],\
+		#width = t_bin_width[set])
+		ax2.step(ch_bin_boundary[set][:-1],ch_bin_height[set],\
+		where = 'mid')
+		ax2.set_xlabel("Charge [pC]")
+		ax2.set_ylabel("Relative Intensity")
+
 	plt.show()
 
 if __name__=='__main__':
-	# identify number of datasets to be compared, print
-	numarg = len(sys.argv)-1
-	#print "Compared Data", sys.argv
-	print "number of Datasets", numarg
 	
-	#for e through the number of datasets to be compared
-	# open_root file, tree, data using open_tree
-	#for i in range(numarg):
-	dt1, ch1 = (open_root(sys.argv[1]))
-	dt2, ch2 = (open_root(sys.argv[2]))
-	dt3, ch3 = (open_root(sys.argv[3]))
-	dt4, ch4 = (open_root(sys.argv[4]))
-
-	plot(dt1, dt2, dt3, dt4, ch1, ch2, ch3, ch4)
-
-	#prompt = raw_input("dt or charge?:").lower()
-
-	#if prompt == "dt":
-	#	print "executing dt analysis"
-	#	plot_t(dt1, dt2, dt3, dt4)
-	#elif prompt == "charge":
-	#	print "executing charge analysis"
-	#	#plot(ch1, ch2, ch3, ch4)
-	#else:
-	#	print "improper input, exiting..."
-	#	sys.exit()
+	print "Directory: ", sys.argv[1]
+	data = read_dir(sys.argv[1])
+	plot(data)
+	
