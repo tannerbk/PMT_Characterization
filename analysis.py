@@ -42,6 +42,31 @@ def write_to_db(source, pmtid, pmt_type, hv,
 
     conn.commit()
 
+def fit_charge_led(hq):
+    '''
+    Fit the charge distribution to extract relevant parameters.
+    '''
+    c = ROOT.TCanvas("c", "c", 800, 600)
+
+    hq.Rebin(6)
+
+    mmax = hq.GetMaximum()
+    b1 = hq.GetMaximumBin()
+    c1 = hq.GetBinCenter(b1)
+    fit_range = 5.0
+
+    fit = ROOT.TF1("gaus", "gaus", c1 - fit_range, c1 + fit_range)
+    hq.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
+
+    hq.Draw("")
+    fit.Draw("same")
+
+    qmean = fit.GetParameter(1)
+
+    c.Print("charge.png")
+
+    return qmean, 0, 0, 0
+
 
 def fit_charge(hq):
     '''
@@ -163,13 +188,13 @@ def fit_timing(ht, entries):
     return tts, dark_rate, fr_late
 
 
-def open_tree(fname, threshold, trigger_threshold, trigger_q_cut):
+def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
     f = ROOT.TFile.Open(fname)
     t = f.Get("output")
 
     ht = ROOT.TH1D("time","time",2000,-50,150)
-    hq = ROOT.TH1D("charge","charge",600,-0.5,11.5)
+    hq = ROOT.TH1D("charge","charge",6000,-0.5,119.5)
 
     ht.SetDirectory(0)
     hq.SetDirectory(0)
@@ -186,7 +211,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut):
 
         hq.Fill(t.charge - t.charge_empty)
 
-        if(t.trigger_charge < trigger_q_cut): continue
+        if(source == "CHERENKOV" and t.trigger_charge < trigger_q_cut): continue
 
         entries += 1
 
@@ -316,7 +341,7 @@ if __name__=='__main__':
 
     root_file = dirname + "/" + output_name + "_lappd_0_gr0_ch1.root"  
 
-    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut)
+    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut, source)
 
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
@@ -324,9 +349,12 @@ if __name__=='__main__':
     print ("PMT ID %s" % pmt_id)
     print ("HV: %d V" % args.high_voltage)
 
-    tts, dark_rate, fr_late = fit_timing(ht, entries)
-
-    q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq)
+    if source != "LED":
+        tts, dark_rate, fr_late = fit_timing(ht, entries)
+        q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq)
+    else:
+        tts, dark_rate, fr_late = 0, 0, 0
+        q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
 
     if args.save:
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
