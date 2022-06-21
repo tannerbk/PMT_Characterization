@@ -75,8 +75,8 @@ public:
                               char* ch_trig,  // digitizer channel for trigger PMT
                               char* gr_empty, // digitizer group for empty channel
                               char* ch_empty, // digitizer channel for empty channel
-                              double pedestal_window); // Length of the pedestal window (in samples)
-
+                              double pedestal_window, // Length of the pedestal window (in samples)
+                              int led); // 1 if LED dataset, 0 if Cherenkov dataset
 };
 #endif
 

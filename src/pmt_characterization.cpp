@@ -34,7 +34,7 @@ void help(){
 
 int main(int argc, char* argv[]){
 
-     if(argc != 11){
+     if(argc != 12){
          printf("Incorrect number of arguments\n.");
          help();
          return 0;
@@ -50,10 +50,11 @@ int main(int argc, char* argv[]){
      char* gr_empty = argv[8];
      char* ch_empty = argv[9];
      float ped_window = atof(argv[10]);
+     int led = atoi(argv[11]);
 
      PMTChar fPMTChar;
 
-     fPMTChar.pmt_characterization(datafile, output, dig, gr, ch, gr_trig, ch_trig, gr_empty, ch_empty, ped_window);
+     fPMTChar.pmt_characterization(datafile, output, dig, gr, ch, gr_trig, ch_trig, gr_empty, ch_empty, ped_window, led);
 
      return 0;
 }
@@ -113,7 +114,8 @@ void PMTChar::pmt_characterization(char* datafile,
                                    char* ch_trig,
                                    char* gr_empty,
                                    char* ch_empty,
-                                   double pedestal_window){
+                                   double pedestal_window,
+                                   int led){
     /*
     Generate the charge and timing information 
     */
@@ -362,111 +364,124 @@ void PMTChar::pmt_characterization(char* datafile,
                 }
             }
 
-            // Defines a pulse that crosses threshold
-            //if(data.peak_voltage >= voltage_threshold) continue;
-            if(data.peak_voltage_trigger >= trigger_voltage_threshold) continue;
+            if(!led){
 
-            int trigger_sample = 0;
-            if(CONST_FRAC_TRIGGER){
-                // Constant fraction discriminator applied to trigger PMT
-                trigger_sample = fTools.const_frac(peak_bin_trigger, lookback_trigger,
-                                                   datacluster_trigger, dy,
-                                                   data.pedestal_trigger, data.peak_voltage_trigger,
-                                                   const_frac_thresh_trigger);
+              // Defines a pulse that crosses threshold
+              //if(data.peak_voltage >= voltage_threshold) continue;
+              if(data.peak_voltage_trigger >= trigger_voltage_threshold) continue;
+
+              int trigger_sample = 0;
+              if(CONST_FRAC_TRIGGER){
+                  // Constant fraction discriminator applied to trigger PMT
+                  trigger_sample = fTools.const_frac(peak_bin_trigger, lookback_trigger,
+                                                     datacluster_trigger, dy,
+                                                     data.pedestal_trigger, data.peak_voltage_trigger,
+                                                     const_frac_thresh_trigger);
+              }
+              else{
+                  // Constant threshold discriminator applied to trigger PMT
+                  trigger_sample = fTools.const_threshold(peak_bin_trigger, lookback_trigger,
+                                                          datacluster_trigger, dy,
+                                                          data.pedestal_trigger,
+                                                          const_thresh_trigger);
+              }
+
+              // Constant fraction discriminator applied to CHESS PMT waveform
+              int sample = fTools.const_frac(peak_bin, lookback,
+                                             datacluster, dy,
+                                             data.pedestal,
+                                             data.peak_voltage,
+                                             const_frac_thresh);
+
+              // Constant fraction discriminiator applied to TTL pulse for CHESS PMT
+              int tr_sample = fTools.const_frac_ttl(peak_tr_bin, lookback_trigger,
+                                                    datacluster_tr, dy,
+                                                    data.pedestal_tr,
+                                                    data.peak_tr_voltage,
+                                                    const_frac_thresh);
+
+              // Constant fraction discriminiator applied to TTL pulse for trigger PMT
+              int tr_trigger_sample = fTools.const_frac_ttl(peak_tr_bin_trigger, lookback_trigger,
+                                                            datacluster_trigger_tr, dy,
+                                                            data.pedestal_trigger_tr,
+                                                            data.peak_tr_voltage_trigger,
+                                                            const_frac_thresh);
+
+              // Index of the start index + threshold crossing sample
+              int index = fmod((start_index[j]+sample),window_length);
+              // Apply a linear interpolation between two samples around threshold crossing
+              double dt = fTools.interpolate(sample, datacluster,
+                                             data.pedestal, dy,
+                                             data.peak_voltage, cal_pmt,
+                                             index, const_frac_thresh);
+              // Convert from sample to time using calibrated information
+              data.time = fCal.get_time(window_length, start_index[j],
+                                        sample-1, cal_pmt);
+              data.time += dt;
+
+              // Repeat for the CHESS PMT group trigger signal
+              int tr_index = fmod((start_index[j]+tr_sample),window_length);
+              double dt_tr = fTools.interpolate(tr_sample, datacluster_tr,
+                                                data.pedestal_tr, dy,
+                                                data.peak_tr_voltage, cal_pmt,
+                                                tr_index, const_frac_thresh);
+              data.time_ttl = fCal.get_time(window_length, start_index[j],
+                                            tr_sample-1, cal_pmt);
+              data.time_ttl += dt_tr;
+
+              // Time difference between CHESS PMT time and TTL pulse
+              data.dt = data.time - data.time_ttl;
+
+              // Index of the start index + threshold crossing sample (trigger PMT)
+              int trigger_index = fmod((start_index_trigger[j]+trigger_sample),window_length);
+
+              double dt_trig = 0;
+              // Apply a linear interpolation between two samples around threshold crossing
+              if(CONST_FRAC_TRIGGER){
+                  dt_trig = fTools.interpolate(trigger_sample, datacluster_trigger,
+                                               data.pedestal_trigger, dy,
+                                               data.peak_voltage_trigger, cal_trigger,
+                                               trigger_index, const_frac_thresh_trigger);
+              }
+              else{
+                  dt_trig = fTools.interpolate_const(trigger_sample, datacluster_trigger,
+                                                     data.pedestal_trigger, dy,
+                                                     data.peak_voltage_trigger, cal_trigger,
+                                                     trigger_index, const_thresh_trigger);
+              }
+
+              // Convert from sample to time using calibrated information
+              data.time_trigger = fCal.get_time(window_length, start_index_trigger[j],
+                                                trigger_sample-1, cal_trigger);
+              data.time_trigger += dt_trig;
+
+              // Repeat for the trigger PMT group trigger signal
+              int tr_trigger_index = fmod((start_index_trigger[j]+tr_trigger_sample),window_length);
+              double dt_tr_trig = fTools.interpolate(tr_trigger_sample, datacluster_trigger_tr,
+                                                     data.pedestal_trigger_tr, dy,
+                                                     data.peak_tr_voltage_trigger, cal_trigger,
+                                                     tr_trigger_index, const_frac_thresh);
+              // Convert from sample to time using calibrated information
+              data.time_trigger_ttl = fCal.get_time(window_length, start_index_trigger[j],
+                                                    tr_trigger_sample-1, cal_trigger);
+              data.time_trigger_ttl += dt_tr_trig;
+
+              // Time difference between trigger time and TTL pulse
+              data.dt_trigger = data.time_trigger - data.time_trigger_ttl;
+
+              // Ultimately it is the difference in time differences that we use
+              data.deltat = (data.dt - data.dt_trigger);
+
+              // Integrate the trigger waveform
+              data.trigger_charge = fTools.get_charge(trigger_sample-integration_samples_back,
+                                                      trigger_sample+integration_samples_forward,
+                                                      datacluster_trigger, data.pedestal_trigger, dy, dx);
+
+              data.trigger_charge_empty = fTools.get_charge(trigger_sample-integration_samples_back,
+                                                            trigger_sample+integration_samples_forward,
+                                                            datacluster_empty, data.pedestal_empty, dy, dx);
+
             }
-            else{
-                // Constant threshold discriminator applied to trigger PMT
-                trigger_sample = fTools.const_threshold(peak_bin_trigger, lookback_trigger,
-                                                        datacluster_trigger, dy,
-                                                        data.pedestal_trigger,
-                                                        const_thresh_trigger);
-            }
-
-            // Constant fraction discriminator applied to CHESS PMT waveform
-            int sample = fTools.const_frac(peak_bin, lookback,
-                                           datacluster, dy,
-                                           data.pedestal,
-                                           data.peak_voltage,
-                                           const_frac_thresh);
-
-            // Constant fraction discriminiator applied to TTL pulse for CHESS PMT
-            int tr_sample = fTools.const_frac_ttl(peak_tr_bin, lookback_trigger,
-                                                  datacluster_tr, dy,
-                                                  data.pedestal_tr,
-                                                  data.peak_tr_voltage,
-                                                  const_frac_thresh);
-
-            // Constant fraction discriminiator applied to TTL pulse for trigger PMT
-            int tr_trigger_sample = fTools.const_frac_ttl(peak_tr_bin_trigger, lookback_trigger,
-                                                          datacluster_trigger_tr, dy,
-                                                          data.pedestal_trigger_tr,
-                                                          data.peak_tr_voltage_trigger,
-                                                          const_frac_thresh);
-
-            // Index of the start index + threshold crossing sample
-            int index = fmod((start_index[j]+sample),window_length);
-            // Apply a linear interpolation between two samples around threshold crossing
-            double dt = fTools.interpolate(sample, datacluster,
-                                           data.pedestal, dy,
-                                           data.peak_voltage, cal_pmt,
-                                           index, const_frac_thresh);
-            // Convert from sample to time using calibrated information
-            data.time = fCal.get_time(window_length, start_index[j],
-                                      sample-1, cal_pmt);
-            data.time += dt;
-
-            // Repeat for the CHESS PMT group trigger signal
-            int tr_index = fmod((start_index[j]+tr_sample),window_length);
-            double dt_tr = fTools.interpolate(tr_sample, datacluster_tr,
-                                              data.pedestal_tr, dy,
-                                              data.peak_tr_voltage, cal_pmt,
-                                              tr_index, const_frac_thresh);
-            data.time_ttl = fCal.get_time(window_length, start_index[j],
-                                          tr_sample-1, cal_pmt);
-            data.time_ttl += dt_tr;
-
-            // Time difference between CHESS PMT time and TTL pulse
-            data.dt = data.time - data.time_ttl;
-
-            // Index of the start index + threshold crossing sample (trigger PMT)
-            int trigger_index = fmod((start_index_trigger[j]+trigger_sample),window_length);
-
-            double dt_trig = 0;
-            // Apply a linear interpolation between two samples around threshold crossing
-            if(CONST_FRAC_TRIGGER){
-                dt_trig = fTools.interpolate(trigger_sample, datacluster_trigger,
-                                             data.pedestal_trigger, dy,
-                                             data.peak_voltage_trigger, cal_trigger,
-                                             trigger_index, const_frac_thresh_trigger);
-            }
-            else{
-                dt_trig = fTools.interpolate_const(trigger_sample, datacluster_trigger,
-                                                   data.pedestal_trigger, dy,
-                                                   data.peak_voltage_trigger, cal_trigger,
-                                                   trigger_index, const_thresh_trigger);
-            }
-
-            // Convert from sample to time using calibrated information
-            data.time_trigger = fCal.get_time(window_length, start_index_trigger[j],
-                                              trigger_sample-1, cal_trigger);
-            data.time_trigger += dt_trig;
-
-            // Repeat for the trigger PMT group trigger signal
-            int tr_trigger_index = fmod((start_index_trigger[j]+tr_trigger_sample),window_length);
-            double dt_tr_trig = fTools.interpolate(tr_trigger_sample, datacluster_trigger_tr,
-                                                   data.pedestal_trigger_tr, dy,
-                                                   data.peak_tr_voltage_trigger, cal_trigger,
-                                                   tr_trigger_index, const_frac_thresh);
-            // Convert from sample to time using calibrated information
-            data.time_trigger_ttl = fCal.get_time(window_length, start_index_trigger[j],
-                                                  tr_trigger_sample-1, cal_trigger);
-            data.time_trigger_ttl += dt_tr_trig;
-
-            // Time difference between trigger time and TTL pulse
-            data.dt_trigger = data.time_trigger - data.time_trigger_ttl;
-
-            // Ultimately it is the difference in time differences that we use
-            data.deltat = (data.dt - data.dt_trigger);
 
             // Integrate the waveform over short/long windows
             data.charge = fTools.get_charge(peak_bin-integration_samples_back,
@@ -476,15 +491,6 @@ void PMTChar::pmt_characterization(char* datafile,
             data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back,
                                                   peak_bin+integration_samples_forward,
                                                   datacluster_empty, data.pedestal_empty, dy, dx);
-
-            // Integrate the trigger waveform
-            data.trigger_charge = fTools.get_charge(trigger_sample-integration_samples_back,
-                                                    trigger_sample+integration_samples_forward,
-                                                    datacluster_trigger, data.pedestal_trigger, dy, dx);
-
-            data.trigger_charge_empty = fTools.get_charge(trigger_sample-integration_samples_back,
-                                                          trigger_sample+integration_samples_forward,
-                                                          datacluster_empty, data.pedestal_empty, dy, dx);
 
             if(simple_write_waveforms){
                 wfm->Write();

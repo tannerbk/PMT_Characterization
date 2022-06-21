@@ -28,6 +28,8 @@ def write_to_db(source, pmtid, pmt_type, hv,
     '''
     conn, cursor = connect_to_db()
 
+    mc = comp.replace("_", " ")
+
     cursor.execute("INSERT INTO pmt_information "
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
@@ -36,7 +38,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f)" % \
                    (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
                     q_peak, q_width, q_high, q_pv, entries, thresh, cr, \
-                    comp, comment, tq_cut, t_thresh, settle))
+                    mc, comment, tq_cut, t_thresh, settle))
 
     conn.commit()
 
@@ -161,7 +163,7 @@ def fit_timing(ht, entries):
     return tts, dark_rate, fr_late
 
 
-def open_tree(fname, threshold, trigger_q_cut):
+def open_tree(fname, threshold, trigger_threshold, trigger_q_cut):
 
     f = ROOT.TFile.Open(fname)
     t = f.Get("output")
@@ -189,6 +191,7 @@ def open_tree(fname, threshold, trigger_q_cut):
         entries += 1
 
         if(t.peak_voltage > threshold): continue
+        if(t.peak_voltage_trigger > trigger_threshold): continue
 
         coincidence_rate += 1.0
 
@@ -199,11 +202,14 @@ def open_tree(fname, threshold, trigger_q_cut):
     return ht, hq, entries, coincidence_rate
 
 
-def run_analysis(datafile, output_name, pedestal):
+def run_analysis(datafile, output_name, pedestal, source):
+
+    if source == "CHERENKOV": led = 0
+    if source == "LED": led = 1
 
     # TO-DO, make inputs
     command = ("/data/snoplus/home/tannerbk/pmt_characterization/src/run_pmt_characterization %s %s "
-               "lappd_0 gr0 ch1 gr0 ch0 gr0 ch2 %d" % (datafile, output_name, pedestal))
+               "lappd_0 gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % (datafile, output_name, pedestal, led))
 
     print ("Running: %s" % command)
 
@@ -270,6 +276,7 @@ if __name__=='__main__':
     source = args.source.upper()
     pmt_id = args.pmt_id.upper()
     pmt_type = args.pmt_type.upper() 
+    magnetic_compensation = args.magnetic_compensation.capitalize()
 
     source_options = ["CHERENKOV", "LED"]
 
@@ -286,9 +293,10 @@ if __name__=='__main__':
         sys.exit(1) 
        
 
-    output_name = pmt_id + "_" + str(args.high_voltage) + "V" + "_" + args.magnetic_compensation
+    output_name = pmt_id + "_" + str(args.high_voltage) + "V" + "_" + magnetic_compensation
     output_name += "_" + str(args.trigger_threshold) + "mV"
     output_name += "_" + str(args.trigger_q_cut) + "pC"
+    output_name += "_" + str(args.settle_time) + "Hrs"
     output_name += "_" + args.note
 
     dirname = OUTPUT + output_name
@@ -304,11 +312,11 @@ if __name__=='__main__':
 
     datafile = dirname + "/" + args.txt_file
 
-    run_analysis(datafile, output_name, args.pedestal)
+    run_analysis(datafile, output_name, args.pedestal, source)
 
     root_file = dirname + "/" + output_name + "_lappd_0_gr0_ch1.root"  
 
-    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_q_cut)
+    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut)
 
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
@@ -322,8 +330,8 @@ if __name__=='__main__':
 
     if args.save:
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
-                    fr_late, 1.0, 1.0, dark_rate, q_mean, q_width, high_charge_pct, \
-                    p_to_v, entries, args.threshold, coinc_rate, args.magnetic_compensation, \
+                    fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
+                    p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
                     args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time)
 
         write_root_file(args.root_file, ht, hq)
