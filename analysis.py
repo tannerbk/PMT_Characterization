@@ -48,7 +48,7 @@ def fit_charge_led(hq):
     '''
     c = ROOT.TCanvas("c", "c", 800, 600)
 
-    hq.Rebin(6)
+    hq.Rebin(25)
 
     mmax = hq.GetMaximum()
     b1 = hq.GetMaximumBin()
@@ -298,7 +298,10 @@ if __name__=='__main__':
     parser.add_argument('-x', '--save', action="store_true")
     args = parser.parse_args()
 
-    source = args.source.capitalize()
+    if args.source != "LED":
+        source = args.source.capitalize()
+    else:
+        source = args.source
     pmt_id = args.pmt_id.upper()
     pmt_type = args.pmt_type.upper() 
     magnetic_compensation = args.magnetic_compensation.capitalize()
@@ -328,7 +331,7 @@ if __name__=='__main__':
     dirname = OUTPUT + output_name
 
     try:
-        os.mkdir(dirname)
+        os.makedirs(dirname,0777)
     except OSError:
         pass
 
@@ -365,3 +368,11 @@ if __name__=='__main__':
 
         write_root_file(args.root_file, ht, hq)
 
+    os.chmod(dirname + "/" + args.txt_file, 0777)
+    os.chmod(dirname + "/" + args.root_file, 0777)
+    os.chmod(root_file, 0777) 
+    os.chmod(dirname + "/" + "charge.png", 0777)
+    if source != "LED":
+        os.chmod(dirname + "/" + "time_zoomed.png", 0777)
+        os.chmod(dirname + "/" + "time.png", 0777)
+        os.chmod(dirname + "/" + "time.png", 0777)
