@@ -140,10 +140,10 @@ def plot(x):
 	#ch_max = raw_input("Upper value of charge: ")
 
 	# standard lower and upper lims of histograms
-	t_min = 10
-	t_max = 20
-	ch_min = 1
-	ch_max = 6
+	t_min = 0
+	t_max = 0
+	ch_min = 20
+	ch_max = 100
 	
 	bin_width = .1
 
@@ -173,16 +173,16 @@ def plot(x):
 	peak_indexes = []
 	hold = []
 
-	for height_set in range(len(t_bin_height)):
+	#for height_set in range(len(t_bin_height)):
 
-		hold.append(get_indexes(t_bin_height[height_set]))
-		fwhm_index.append(hold[height_set][1]-hold[height_set][0])
-		fwhm.append(fwhm_index[height_set] * t_bin_width[height_set])
-		peak_indexes.append(hold[height_set][2])
+	#	hold.append(get_indexes(t_bin_height[height_set]))
+	#	fwhm_index.append(hold[height_set][1]-hold[height_set][0])
+	#	fwhm.append(fwhm_index[height_set] * t_bin_width[height_set])
+	#	peak_indexes.append(hold[height_set][2])
 
-	fwhm, peak_indexes
+	#fwhm, peak_indexes
 	
-	print "fwhm is ", fwhm
+	#print "fwhm is ", fwhm
 	
 	fig1, ax1 = plt.subplots()
 	fig2, ax2 = plt.subplots()
