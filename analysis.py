@@ -298,7 +298,7 @@ if __name__=='__main__':
     parser.add_argument('-x', '--save', action="store_true")
     args = parser.parse_args()
 
-    source = args.source.upper()
+    source = args.source.capitalize()
     pmt_id = args.pmt_id.upper()
     pmt_type = args.pmt_type.upper() 
     magnetic_compensation = args.magnetic_compensation.capitalize()
@@ -318,7 +318,8 @@ if __name__=='__main__':
         sys.exit(1) 
        
 
-    output_name = pmt_id + "_" + str(args.high_voltage) + "V" + "_" + magnetic_compensation
+    output_name = pmt_id + "_" + str(args.source) + "_" 
+    output_name += str(args.high_voltage) + "V" + "_" + magnetic_compensation
     output_name += "_" + str(args.trigger_threshold) + "mV"
     output_name += "_" + str(args.trigger_q_cut) + "pC"
     output_name += "_" + str(args.settle_time) + "Hrs"
