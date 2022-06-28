@@ -481,16 +481,25 @@ void PMTChar::pmt_characterization(char* datafile,
                                                             trigger_sample+integration_samples_forward,
                                                             datacluster_empty, data.pedestal_empty, dy, dx);
 
+              data.charge = fTools.get_charge(peak_bin-integration_samples_back,
+                                              peak_bin+integration_samples_forward,
+                                              datacluster, data.pedestal, dy, dx);
+
+              data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back,
+                                                    peak_bin+integration_samples_forward,
+                                                    datacluster_empty, data.pedestal_empty, dy, dx);
+
             }
 
-            // Integrate the waveform over short/long windows
-            data.charge = fTools.get_charge(peak_bin-integration_samples_back,
-                                            peak_bin+integration_samples_forward,
-                                            datacluster, data.pedestal, dy, dx);
+            else{
+              data.charge = fTools.get_charge(peak_bin-integration_samples_back_led,
+                                              peak_bin+integration_samples_forward_led,
+                                              datacluster, data.pedestal, dy, dx);
 
-            data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back,
-                                                  peak_bin+integration_samples_forward,
-                                                  datacluster_empty, data.pedestal_empty, dy, dx);
+              data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back_led,
+                                                    peak_bin+integration_samples_forward_led,
+                                                    datacluster_empty, data.pedestal_empty, dy, dx);
+            }
 
             if(simple_write_waveforms){
                 wfm->Write();

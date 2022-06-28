@@ -48,12 +48,12 @@ def fit_charge_led(hq):
     '''
     c = ROOT.TCanvas("c", "c", 800, 600)
 
-    hq.Rebin(25)
+    hq.Rebin(50)
 
     mmax = hq.GetMaximum()
     b1 = hq.GetMaximumBin()
     c1 = hq.GetBinCenter(b1)
-    fit_range = 5.0
+    fit_range = c1*0.2
 
     fit = ROOT.TF1("gaus", "gaus", c1 - fit_range, c1 + fit_range)
     hq.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
@@ -62,10 +62,11 @@ def fit_charge_led(hq):
     fit.Draw("same")
 
     qmean = fit.GetParameter(1)
+    qsigma = fit.GetParameter(2)
 
     c.Print("charge.png")
 
-    return qmean, 0, 0, 0
+    return qmean, qsigma, 0, 0
 
 
 def fit_charge(hq):

@@ -31,6 +31,12 @@ const int integration_samples_back = 30;
 // Number of samples to integrate for charge
 const int integration_samples_forward = 60;
 
+// Number of samples to integrate for charge
+const int integration_samples_back_led = 150;
+
+// Number of samples to integrate for charge
+const int integration_samples_forward_led = 150;
+
 // Const. fraction discriminator
 const double const_frac_thresh = 0.6;
 
