@@ -212,7 +212,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
         hq.Fill(t.charge - t.charge_empty)
 
-        if(source == "CHERENKOV" and t.trigger_charge < trigger_q_cut): continue
+        if(source == "Cherenkov" and t.trigger_charge < trigger_q_cut): continue
 
         entries += 1
 
@@ -230,7 +230,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
 def run_analysis(datafile, output_name, pedestal, source):
 
-    if source == "CHERENKOV": led = 0
+    if source == "Cherenkov": led = 0
     if source == "LED": led = 1
 
     # TO-DO, make inputs
@@ -307,7 +307,7 @@ if __name__=='__main__':
     pmt_type = args.pmt_type.upper() 
     magnetic_compensation = args.magnetic_compensation.capitalize()
 
-    source_options = ["CHERENKOV", "LED"]
+    source_options = ["Cherenkov", "LED"]
 
     if source not in source_options:
         print ("Invalid source.")
