@@ -7,6 +7,7 @@ CREATE TABLE pmt_information(
     pmt_id                   text NOT NULL,
     high_voltage             smallint NOT NULL, -- V
     tts_sigma                real, -- ns
+    tts_sigma_err            real, -- ns
     late_pulsing_pct         real,
     after_pulsing_pct        real,
     pre_pulsing_pct          real,
