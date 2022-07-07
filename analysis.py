@@ -22,7 +22,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                 tts, lp, ap, pp, dr,
                 q_peak, q_width, q_high, q_pv,
                 entries, thresh, cr, comp, comment,
-                tq_cut, t_thresh, settle):
+                tq_cut, t_thresh, settle, tts_err):
     '''
     Write to PMT testing information to the database.
     '''
@@ -34,11 +34,11 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
                    "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
-                   "comment, trigger_q_cut, trigger_threshold, settling_time)"
+                   "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err)"
                    "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f)" % \
                    (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
                     q_peak, q_width, q_high, q_pv, entries, thresh, cr, \
-                    mc, comment, tq_cut, t_thresh, settle))
+                    mc, comment, tq_cut, t_thresh, settle, tts_err))
 
     conn.commit()
 
@@ -69,7 +69,7 @@ def fit_charge_led(hq):
     return qmean, qsigma, 0, 0
 
 
-def fit_charge(hq):
+def fit_charge(hq, interactive):
     '''
     Fit the charge distribution to extract relevant parameters.
     '''
@@ -117,10 +117,14 @@ def fit_charge(hq):
     print ("High charge rate: %.2f pct" % high_charge_pct)
     print ("Peak to value: %.2f" % p_to_v)
 
+    if interactive:
+        print ("Hit enter to continue.")
+        raw_input()
+
     return qmean, qsigma, high_charge_pct, p_to_v
 
 
-def fit_timing(ht, entries):
+def fit_timing(ht, entries, interactive):
 
     c = ROOT.TCanvas("c", "c", 800, 600)
 
@@ -132,6 +136,7 @@ def fit_timing(ht, entries):
     ht.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
 
     tts = fit.GetParameter(2)
+    tts_unc = fit.GetParError(2)
 
     df_low = 16
     df_high = 6
@@ -173,6 +178,10 @@ def fit_timing(ht, entries):
 
     c.Print("time_zoomed.png")
 
+    if interactive:
+        print ("Hit enter to continue.")
+        raw_input()
+
     ht.GetXaxis().SetRangeUser(-20.0, 100.0)
 
     c.SetLogy()
@@ -181,12 +190,12 @@ def fit_timing(ht, entries):
 
     c.Print("time.png")
 
-    print ("TTS (sigma): %.2f ns" % tts)
+    print ("TTS (sigma): %.2f ns +/- %.2f") % (tts, tts_unc)
     print ("TTS (FWHM): %.2f ns" % (float(tts)*2.355))
     print ("Dark rate: %.1f Hz" % dark_rate)
     print ("Late fraction: %.2f pct" % fr_late)
 
-    return tts, dark_rate, fr_late
+    return tts, dark_rate, fr_late, tts_unc
 
 
 def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
@@ -244,14 +253,17 @@ def run_analysis(datafile, output_name, pedestal, source):
     subprocess.call(commands)
 
 
-def create_event_file(directory, ofile):
+def create_event_file(directory, ofile, max_files):
 
     event_file = open(ofile, "w")
 
+    count = 0
     for f in sorted(os.listdir(directory)):
         if ".h5" not in f: continue
         if f[-3:] != ".h5": continue
+        if max_files != 0 and count > max_files: continue
         event_file.write(directory + "/" + f + "\n")
+        count+=1
 
     event_file.close()
     return event_file
@@ -297,6 +309,8 @@ if __name__=='__main__':
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
     parser.add_argument('-o', '--root-file', type=str, default="data.root")
     parser.add_argument('-x', '--save', action="store_true")
+    parser.add_argument('-y', '--interactive', action="store_true")
+    parser.add_argument('-z', '--max_files', type=int, default=0)
     args = parser.parse_args()
 
     if args.source != "LED":
@@ -338,7 +352,7 @@ if __name__=='__main__':
 
     os.chdir(dirname)
 
-    event_file = create_event_file(args.directory, args.txt_file)
+    event_file = create_event_file(args.directory, args.txt_file, args.max_files)
 
     datafile = dirname + "/" + args.txt_file
 
@@ -355,22 +369,22 @@ if __name__=='__main__':
     print ("HV: %d V" % args.high_voltage)
 
     if source != "LED":
-        tts, dark_rate, fr_late = fit_timing(ht, entries)
-        q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq)
+        tts, dark_rate, fr_late, tts_err = fit_timing(ht, entries, args.interactive)
+        q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq, args.interactive)
     else:
-        tts, dark_rate, fr_late = 0, 0, 0
+        tts, dark_rate, fr_late, tts_err = 0, 0, 0, 0
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
 
     if args.save:
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
-                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time)
+                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, tts_err)
 
-        write_root_file(args.root_file, ht, hq)
+    write_root_file(args.root_file, ht, hq)
 
-    os.chmod(dirname + "/" + args.txt_file, 0777)
     os.chmod(dirname + "/" + args.root_file, 0777)
+    os.chmod(dirname + "/" + args.txt_file, 0777)
     os.chmod(root_file, 0777) 
     os.chmod(dirname + "/" + "charge.png", 0777)
     if source != "LED":
