@@ -35,7 +35,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
                    "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
                    "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err)"
-                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f)" % \
+                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f, %f)" % \
                    (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
                     q_peak, q_width, q_high, q_pv, entries, thresh, cr, \
                     mc, comment, tq_cut, t_thresh, settle, tts_err))
