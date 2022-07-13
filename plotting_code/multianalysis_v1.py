@@ -8,9 +8,8 @@
 import ROOT # import the CERN ROOT module
 import sys
 from matplotlib import pyplot as plt
+from matplotlib.pyplot import cm
 import numpy as np
-
-# jordan 
 import glob
 
 def open_tree(tree):
@@ -49,10 +48,9 @@ def open_root(fi1):
 
 # takes in folder of .root files
 # outputs [(dt1, ch1), (dt2,ch2), ... , (dtn, chn)]
-# list[1][1] = dt1, list[n] = dtn, chn
 def read_dir(dir_name):
 	value_list = []
-	files = glob.glob(dir_name + "/*.root")
+	files = sorted(glob.glob(dir_name + "/*.root"))
 	print "Opening directory..."
 	for file in files:
 		print "opening file ", file
@@ -60,6 +58,7 @@ def read_dir(dir_name):
 		value_list.append((dt,ch))
 		print "Data extracted from file"
 	return value_list
+	# list[1][1] = dt1, list[n] = dtn, chn
 
 def normalize(data, crop_min, crop_max, bw):
 	# crop dataset so that all datasets can be plotted together
@@ -119,7 +118,7 @@ def get_indexes(x):
 	# all return vals of type numpy.int64
 	return fwhm_indx_l, fwhm_indx_r, pk_indx
 
-def plot(x):
+def gethistvals(x):
 	# x is of type list
 	# x[0] is of type tuple
 	# x[0][0] is of type list
@@ -142,7 +141,7 @@ def plot(x):
 	# standard lower and upper lims of histograms
 	t_min = 10
 	t_max = 20
-	ch_min = 1
+	ch_min = 0
 	ch_max = 6
 	
 	bin_width = .1
@@ -168,33 +167,31 @@ def plot(x):
 
 	print t_bin_width, ch_bin_width
 
-	fwhm_index = []
-	fwhm = []
-	peak_indexes = []
-	hold = []
+	return t_bin_boundary, t_bin_height, t_bin_width, ch_bin_boundary, ch_bin_height, ch_bin_width
 
-	for height_set in range(len(t_bin_height)):
+def plot(x):
+	t_bin_boundary = x[0]
+	t_bin_height = x[1]
+	t_bin_width = x[2]
+	ch_bin_boundary = x[3]
+	ch_bin_height = x[4]
+	ch_bin_width = x[5]
 
-		hold.append(get_indexes(t_bin_height[height_set]))
-		fwhm_index.append(hold[height_set][1]-hold[height_set][0])
-		fwhm.append(fwhm_index[height_set] * t_bin_width[height_set])
-		peak_indexes.append(hold[height_set][2])
-
-	fwhm, peak_indexes
-	
-	print "fwhm is ", fwhm
-	
 	fig1, ax1 = plt.subplots()
 	fig2, ax2 = plt.subplots()
 	labels = []
 
+	color = iter(cm.rainbow(np.linspace(0, 1, len(t_bin_boundary))))
+
 	for set in range(len(t_bin_boundary)):
+
+		c = next(color)
 		
 		fig1.suptitle("Delta t")
 		#ax1.bar(t_bin_boundary[set][:-1], t_bin_height[set],\
 		#width= t_bin_width[set])
 		ax1.step(t_bin_boundary[set][:-1],t_bin_height[set],\
-		where = 'mid',label='%s data' % set)
+		where = 'mid',label='%s data' % set, c = c)
 		ax1.set_xlabel("time [ns]")
 		ax2.set_ylabel("Relative Intensity")
 
@@ -212,9 +209,10 @@ def plot(x):
 	ax2.legend(labels)
 	plt.show()
 
+
 if __name__=='__main__':
 	
 	print "Directory: ", sys.argv[1]
 	data = read_dir(sys.argv[1])
-	plot(data)
-	
+	hist_vals = gethistvals(data)
+	plot(hist_vals)
