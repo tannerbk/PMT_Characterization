@@ -1,7 +1,8 @@
 # this is python code was developed by mduce so multiple pmt datasets can be
 # compared after they have been run through analysis.py
-# input: four .root files outputted from analysis.py
-# output: layered histogram of four datasets for desired parameter
+# input: a directory containing all .root files desired for plotting
+#	userinput: identifier for each dataset for plot legend
+# output: layered histogram of four datasets
 # 
 # NOTE: code requires input of a directory with the to-be-compared .root files
 
@@ -15,7 +16,7 @@ import glob
 def open_tree(tree):
 	
 	# print total number of recorded events
-	print "Entries:", tree.GetEntries() 
+	print "Number of entries:", tree.GetEntries() 
 	
 	# initialize lists for data storage
 	charge_c=[] # charge, measurment channel
@@ -33,7 +34,7 @@ def open_tree(tree):
 		#print "Deltat, Charge:", tree.deltat, tree.charge
 		charge_c.append(tree.charge - tree.charge_empty)
 		deltat_c.append(tree.deltat)
-	print "Extracting data from root file..."
+#	print "Extracting data from root file..."
 	
 	return deltat_c, charge_c
 
@@ -51,12 +52,11 @@ def open_root(fi1):
 def read_dir(dir_name):
 	value_list = []
 	files = sorted(glob.glob(dir_name + "/*.root"))
-	print "Opening directory..."
+	print "Opening directory ", dir_name
 	for file in files:
-		print "opening file ", file
 		dt, ch = open_root(file)
 		value_list.append((dt,ch))
-		print "Data extracted from file"
+		print "Data extracted from ", file
 	return value_list
 	# list[1][1] = dt1, list[n] = dtn, chn
 
@@ -78,10 +78,8 @@ def normalize(data, crop_min, crop_max, bw):
 
 	# build histogram of data (y1) and desired bins
 	bin_height, bin_boundary = np.histogram(y1,bins=len(b))
-	
 	# obtain bin width, print
 	width = bin_boundary[1]-bin_boundary[0]
-	
 	# normalize bin heights to max bin height = 1
 	bin_height = bin_height/float(max(bin_height))
 
@@ -102,22 +100,6 @@ def get_peak_index(x):
 	pk_indx = pk_val_indxs[0][0]
 	return pk_indx
 
-def get_indexes(x):
-	# input: list of bin heights
-
-	# output of get_peak = index at binheight = 1
-	pk_indx = get_peak_index(x)
-	array = np.asarray(x)
-	ar1 = array[:pk_indx]
-	ar2 = array[pk_indx:]
-	
-	# get indices of ar1,ar2 where ar1[i] ~= .5
-	fwhm_indx_l = (np.abs(ar1 - .5)).argmin()
-	fwhm_indx_r = (np.abs(ar2 - .5)).argmin()
-
-	# all return vals of type numpy.int64
-	return fwhm_indx_l, fwhm_indx_r, pk_indx
-
 def gethistvals(x):
 	# x is of type list
 	# x[0] is of type tuple
@@ -127,6 +109,7 @@ def gethistvals(x):
 	t_bin_boundary = []
 	t_bin_height = []
 	t_bin_width = []
+	t_max_val_index = []
 
 	ch_bin_boundary = []
 	ch_bin_height = []
@@ -153,6 +136,8 @@ def gethistvals(x):
 		t_out = normalize(x[e][0], t_min, t_max, bin_width)
 		ch_out = normalize(x[e][1], ch_min, ch_max, bin_width)		
 
+		t_max_val_index.append(get_peak_index(t_out[1]))
+
 		t_bin_boundary.append(t_out[0])
 		t_bin_height.append(t_out[1])
 		t_bin_width.append(t_out[2])
@@ -163,11 +148,10 @@ def gethistvals(x):
 
 	# t_bin_item is a list of np arrays
 	t_bin_boundary, t_bin_height, t_bin_width, \
-	ch_bin_boundary, ch_bin_height, ch_bin_width
+	ch_bin_boundary, ch_bin_height, ch_bin_width, \
+	t_max_val_index
 
-	print t_bin_width, ch_bin_width
-
-	return t_bin_boundary, t_bin_height, t_bin_width, ch_bin_boundary, ch_bin_height, ch_bin_width
+	return t_bin_boundary, t_bin_height, t_bin_width, ch_bin_boundary, ch_bin_height, ch_bin_width, t_max_val_index
 
 def plot(x):
 	t_bin_boundary = x[0]
@@ -176,9 +160,11 @@ def plot(x):
 	ch_bin_boundary = x[3]
 	ch_bin_height = x[4]
 	ch_bin_width = x[5]
+	t_max_val_index = x[6]
 
 	fig1, ax1 = plt.subplots()
 	fig2, ax2 = plt.subplots()
+	fig3, ax3 = plt.subplots()
 	labels = []
 
 	color = iter(cm.rainbow(np.linspace(0, 1, len(t_bin_boundary))))
@@ -188,31 +174,35 @@ def plot(x):
 		c = next(color)
 		
 		fig1.suptitle("Delta t")
-		#ax1.bar(t_bin_boundary[set][:-1], t_bin_height[set],\
-		#width= t_bin_width[set])
 		ax1.step(t_bin_boundary[set][:-1],t_bin_height[set],\
 		where = 'mid',label='%s data' % set, c = c)
 		ax1.set_xlabel("time [ns]")
 		ax2.set_ylabel("Relative Intensity")
 
 		fig2.suptitle("Charge Peak")
-		#ax2.bar(ch_bin_boundary[set][:-1], ch_bin_height[set],\
-		#width = t_bin_width[set])
 		ax2.step(ch_bin_boundary[set][:-1],ch_bin_height[set],\
-		where = 'mid',label='%s data' % set)
+		where = 'mid',label='%s data' % set, c = c)
 		ax2.set_xlabel("Charge [pC]")
 		ax2.set_ylabel("Relative Intensity")
+
+		fig3.suptitle("Shifted Delta t")
+		ax3.step(t_bin_boundary[set][:-1]-\
+		t_bin_boundary[set][t_max_val_index[set]],\
+		t_bin_height[set], where = 'mid',\
+		 label='%s data' % set, c = c),
+		ax3.set_xlabel("time [ns]")
+		ax3.set_ylabel("Relative Intnsity")
 
 		labels.append(raw_input("Input legend label for dataset: "))
 
 	ax1.legend(labels)
 	ax2.legend(labels)
+	ax3.legend(labels)
 	plt.show()
 
 
 if __name__=='__main__':
 	
-	print "Directory: ", sys.argv[1]
 	data = read_dir(sys.argv[1])
 	hist_vals = gethistvals(data)
 	plot(hist_vals)
