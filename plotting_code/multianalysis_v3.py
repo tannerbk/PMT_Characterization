@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from matplotlib.pyplot import cm
 import numpy as np
 import glob
+from prettytable import PrettyTable as pretty
 from scipy.stats import norm
 from scipy.optimize import curve_fit
 
@@ -119,7 +120,7 @@ def gethistvals(x):
 	t_min = 10
 	t_max = 20
 	ch_min = 0
-	ch_max = 6
+	ch_max = 7
 	
 	bin_width = .1
 
@@ -153,7 +154,8 @@ def gethistvals(x):
 def getfithistvals(x,t_range,c_range):
 	# x = tuple of lists of np arrays
 	# x[0] = t_bin_boundary, x[1] = ...height, x[2] = ...width
-	# x[4] = ch_bin_boundary, x[5] = ...height, x[6] = ...width
+	# x[3] = ch_bin_boundary, x[4] = ...height, x[5] = ...width
+	# x[6] = t_max_index, x[7] = ch_max_index
 	
 	cropped_t_bin_boundary = []
 	cropped_t_bin_height = []
@@ -169,8 +171,8 @@ def getfithistvals(x,t_range,c_range):
 		cropped_t_bin_boundary.append(crop_data(x[0][sets],pk_indx[0],t_adjust))
 		cropped_t_bin_height.append(crop_data(x[1][sets],pk_indx[0],t_adjust))
 
-		cropped_ch_bin_boundary.append(crop_data(x[3][sets],pk_indx[1],t_adjust))
-		cropped_ch_bin_height.append(crop_data(x[4][sets],pk_indx[1],t_adjust))
+		cropped_ch_bin_boundary.append(crop_data(x[3][sets],pk_indx[1],ch_adjust))
+		cropped_ch_bin_height.append(crop_data(x[4][sets],pk_indx[1],ch_adjust))
 
 	return cropped_t_bin_boundary, cropped_t_bin_height, x[2], \
 	cropped_ch_bin_boundary, cropped_ch_bin_height, x[5]
@@ -204,32 +206,47 @@ def center_boundaries(x):
 	return t_centered_boundaries, x[1], x[2], ch_centered_boundaries, x[4], x[5]
 
 def apply_gauss_fit(x):
-	mean = []
-	std = []
-	popt = []
-	pcov = []
+	t_mean = []
+	t_std = []
+	t_popt = []
+	t_pcov = []
+	
+	c_mean = []
+	c_std = []
+	c_popt = []
+	c_pcov = []
 
 	for set in range(len(x[0])):
-		mean_out, std_out = norm.fit(x[0][set])
+		t_mean_out, t_std_out = norm.fit(x[0][set])
+		c_mean_out, c_std_out = norm.fit(x[3][set])
+		
+		t_mean.append(t_mean_out)
+		t_std.append(t_std_out)
 
-		mean.append(mean_out)
-		std.append(std_out)
+		c_mean.append(c_mean_out)
+		c_std.append(c_std_out)
 
-		popt_out, pcov_out = curve_fit(Gauss, x[0][set], x[1][set], p0 = [1, mean_out, std_out])
+		t_popt_out, t_pcov_out = curve_fit(Gauss, x[0][set], x[1][set], \
+		 p0 = [1, t_mean_out, t_std_out])
+		c_popt_out, c_pcov_out = curve_fit(Gauss, x[3][set], x[4][set], \
+		 p0 = [1, c_mean_out, c_std_out])
 
-		popt.append(popt_out)
-		pcov.append(pcov_out)
+		t_popt.append(t_popt_out)
+		t_pcov.append(t_pcov_out)
 
-	mean, std, popt, pcov
+		c_pcov.append(c_pcov_out)
+		c_popt.append(c_popt_out)
 
-	return mean, std, popt, pcov
+	t_mean, t_std, t_popt, t_pcov, c_mean, c_std, c_popt, c_pcov
+	
+	t_fwhm = [sigma*2.35 for sigma in t_std]
+	c_fwhm = [sigma*2.35 for sigma in c_std]
 
-def print_gauss_stats(x,filenames):
-	for files in range(len(filenames)):
-		print "file: ", filenames[files]
-		print "mean, std: ", x[0][files], x[1][files]
+	return t_mean, t_std, t_popt, t_pcov,\
+	 c_mean, c_std, c_popt, c_pcov,\
+	 t_fwhm, c_fwhm
 
-def plot(x):
+def plot(x,labels):
 	# input: output from normalization function above where
 	# x[0] = t_bin_boundary, x[1] = ...height, x[2] = ...width
 	# x[3] = ch_bin_boundary, x[4] = ...height, x[5] = ...width
@@ -242,7 +259,6 @@ def plot(x):
 	# initialize plots and labels
 	fig1, ax1 = plt.subplots()
 	fig2, ax2 = plt.subplots()
-	labels = []
 
 	# establish colorgradient
 	color = iter(cm.rainbow(np.linspace(0, 1, len(x[0]))))
@@ -265,13 +281,8 @@ def plot(x):
 		ax2.set_xlabel("Charge [pC]")
 		ax2.set_ylabel("Relative Intensity")
 
-		labels.append(raw_input("Input legend label for dataset: "))
-	labels 
-
 	ax1.legend(labels)
 	ax2.legend(labels)
-
-	return labels
 
 def plot_shifted_t(x,labels):
 
@@ -282,53 +293,111 @@ def plot_shifted_t(x,labels):
 	for set in range(len(x[0])):
 		c = next(color)
 
-		fig3.suptitle("Shifted Delta t")
 		ax3.step(x[0][set][:-1]-\
 		x[0][set][x[6][set]],\
 		x[1][set], where = 'mid',\
-		 label='%s data' % set, c = c),
-		ax3.set_xlabel("time [ns]")
-		ax3.set_ylabel("Relative Intnsity")
-	ax3.legend(labels)
+		label='%s data' % set, c = c),
 
-def plot_fits(x, labels):
+	ax3.legend(labels)
+	ax3.set_xlabel("time [ns]")
+	ax3.set_ylabel("Relative Intnsity")
+	fig3.suptitle("Shifted Delta t")
+
+def plot_fits(x, x_full, labels):
 
 	fig4, ax4 = plt.subplots()
-	mean, std, popt, pcov = apply_gauss_fit(x)
+	fig5, ax5 = plt.subplots()
+
+	stats = apply_gauss_fit(x)
+	t_popt = stats[2]
+	c_popt = stats[6]
 
 	color = iter(cm.rainbow(np.linspace(0, 1, len(x[0]))))
 
 	for set in range(len(x[0])):
 		c = next(color)
 
-		ax4.step(x[0][set],x[1][set],\
-		where = 'mid',label='%s data' % set, c = c)
-		ax4.plot(x[0][set],Gauss(x[0][set], *popt[set]),'r-')
-	ax4.legend(labels)
+		# full tts plot
+		ax4.step(x_full[0][set][:-1],x_full[1][set], where='mid', \
+		label='%s data' % set, c = c)
+		# plot cropped tts plot (fit area)
+		ax4.step(x[0][set],x[1][set], c = c, where = 'mid', \
+		linewidth=2, label='_nolegend_')
+		# plot gauss fit
+		ax4.plot(x[0][set],Gauss(x[0][set], *t_popt[set]),'r-', \
+		label='_nolegend_')
 
+		# full Q plot
+		ax5.step(x_full[3][set][:-1],x_full[4][set], where='mid', \
+		label='%s data' % set, c = c)
+		# plot cropped Q plot (fit area)
+		ax5.step(x[3][set],x[4][set], c = c, where='mid', \
+		linewidth=2, label='_nolegend')
+		# plot gauss fit 
+		ax5.plot(x[3][set],Gauss(x[3][set],*c_popt[set]),'r-', \
+		label = '_nolegend_')
+
+	fig4.suptitle("Zoomed TTS with Gaussian Fit")
+	ax4.set_xlabel("time [ns]")
+	ax4.set_ylabel("Relative Intnsity")
+	ax4.legend(labels)
+	fig5.suptitle("Zoomed Charge Peak with Gaussian Fit")
+	ax5.set_xlabel("Charge [pC]")
+	ax5.set_ylabel("Relative Intensity")
+	ax5.legend(labels)
+
+def printstats(x, labels, files):
+	
+	t = pretty(['Dataset','Label','TTS Mean','TTS FWHM','TTS STD'])
+	c = pretty(['Dataset','Label','Q Mean','Q FWHM','Q STD'])
+	t.title = 'TTS'
+	t.padding_width = 1
+	filenames = [name.rsplit('/',1)[-1] for name in files]
+
+	for sets in range(len(labels)):
+		t.add_row([filenames[sets], labels[sets], x[0][sets], \
+		x[8][sets], x[1][sets]])
+	
+		c.add_row([filenames[sets], labels[sets], x[4][sets], \
+		x[9][sets], x[5][sets]])
+	t, c
+	print(t)
+	print(c)
 
 if __name__=='__main__':
 
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-d', '--directory', type=str, required=True)
+	parser.add_argument('-d', '--directory', type=str, default="")
 	parser.add_argument('-s', '--shift', type=str, default="")
 	parser.add_argument('-f', '--fits', type=str, default="")
+	parser.add_argument('-p', '--plots',type=str, default="")
 	args = parser.parse_args()
 
 	# pull .root files from directory
-	data, files = read_dir(args.directory)
+	if args.directory != "":
+		data, files = read_dir(args.directory)
+	
+		labels = []
 
-	# build histogram vals for each set
-	hist_vals = gethistvals(data)
-	labels = plot(hist_vals)
-	print labels
+		for sets in range(len(files)):
+			labels.append(raw_input("Input legend label for dataset: "))
+		labels
+		
+		# build histogram vals for each set
+		hist_vals = gethistvals(data)
+
+	labels
+	
+	if args.plots == "y":
+		plot(hist_vals,labels)
 
 	if args.fits == "y":
-		fit_hist_vals = getfithistvals(hist_vals,.2,.2)
+		fit_hist_vals = getfithistvals(hist_vals,.20,.40)
 		centered_vals = center_boundaries(fit_hist_vals)
 		stats = apply_gauss_fit(centered_vals)
-		print_gauss_stats(stats, files)
-		plot_fits(centered_vals,labels)
+		plot_fits(centered_vals,center_boundaries(hist_vals),labels)
+
+		printstats(stats, labels, files)
 
 	if args.shift == "y":
 		plot_shifted_t(hist_vals,labels)
