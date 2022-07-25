@@ -246,7 +246,7 @@ def apply_gauss_fit(x):
 	 c_mean, c_std, c_popt, c_pcov,\
 	 t_fwhm, c_fwhm
 
-def plot(x,labels):
+def plot(x,labels,direc):
 	# input: output from normalization function above where
 	# x[0] = t_bin_boundary, x[1] = ...height, x[2] = ...width
 	# x[3] = ch_bin_boundary, x[4] = ...height, x[5] = ...width
@@ -284,7 +284,10 @@ def plot(x,labels):
 	ax1.legend(labels)
 	ax2.legend(labels)
 
-def plot_shifted_t(x,labels):
+	fig1.savefig(direc + "/Delta_t.png")
+	fig2.savefig(direc + "/Charge_Peak.png")
+
+def plot_shifted_t(x,labels,direc):
 
 	fig3, ax3 = plt.subplots()
 
@@ -303,7 +306,9 @@ def plot_shifted_t(x,labels):
 	ax3.set_ylabel("Relative Intnsity")
 	fig3.suptitle("Shifted Delta t")
 
-def plot_fits(x, x_full, labels):
+	fig3.savefig(direc + "/Shifted_t.png")
+
+def plot_fits(x, x_full, labels, direc):
 
 	fig4, ax4 = plt.subplots()
 	fig5, ax5 = plt.subplots()
@@ -346,7 +351,10 @@ def plot_fits(x, x_full, labels):
 	ax5.set_ylabel("Relative Intensity")
 	ax5.legend(labels)
 
-def printstats(x, labels, files):
+	fig4.savefig(direc + "/TTS_Fit.png")
+	fig5.savefig(direc + "/Q_fit.png")
+
+def printstats(x, labels, files, direc):
 	
 	t = pretty(['Dataset','Label','TTS Mean','TTS FWHM','TTS STD'])
 	c = pretty(['Dataset','Label','Q Mean','Q FWHM','Q STD'])
@@ -364,6 +372,13 @@ def printstats(x, labels, files):
 	print(t)
 	print(c)
 
+	ttable = t.get_string()
+	ctable = c.get_string()
+
+	with open(direc + '/fit_stats.txt','wb') as f:
+		f.write(ttable)
+		f.write(ctable)
+
 if __name__=='__main__':
 
 	parser = argparse.ArgumentParser()
@@ -375,7 +390,8 @@ if __name__=='__main__':
 
 	# pull .root files from directory
 	if args.directory != "":
-		data, files = read_dir(args.directory)
+		direc = args.directory
+		data, files = read_dir(direc)
 	
 		labels = []
 
@@ -389,18 +405,18 @@ if __name__=='__main__':
 	labels
 	
 	if args.plots == "y":
-		plot(hist_vals,labels)
+		plot(hist_vals,labels, direc)
 
 	if args.fits == "y":
 		fit_hist_vals = getfithistvals(hist_vals,.20,.40)
 		centered_vals = center_boundaries(fit_hist_vals)
 		stats = apply_gauss_fit(centered_vals)
-		plot_fits(centered_vals,center_boundaries(hist_vals),labels)
+		plot_fits(centered_vals,center_boundaries(hist_vals),labels,direc)
 
-		printstats(stats, labels, files)
+		printstats(stats, labels, files, direc)
 
 	if args.shift == "y":
-		plot_shifted_t(hist_vals,labels)
+		plot_shifted_t(hist_vals,labels,direc)
 
 	plt.show()
 
