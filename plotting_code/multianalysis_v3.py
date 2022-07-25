@@ -1,8 +1,12 @@
 # this is python code was developed by mduce so multiple pmt datasets can be
 # compared after they have been run through analysis.py
-# input: a directory containing all .root files desired for plotting
+# inputs:
+#	-d directory containing all .root files desired for plotting
+#	-p for histograms
+#	-f for histograms with fits and fit stats
+#	-s for deltat histogram where plot peaks are centered on 0
 #	userinput: identifier for each dataset for plot legend
-# output: layered histogram of four datasets
+# output: selected -p, -f, or -s plots (or all)
 # 
 # NOTE: code requires input of a directory with the to-be-compared .root files
 
@@ -337,7 +341,7 @@ def plot_fits(x, x_full, labels, direc):
 		label='%s data' % set, c = c)
 		# plot cropped Q plot (fit area)
 		ax5.step(x[3][set],x[4][set], c = c, where='mid', \
-		linewidth=2, label='_nolegend')
+		linewidth=2, label='_nolegend_')
 		# plot gauss fit 
 		ax5.plot(x[3][set],Gauss(x[3][set],*c_popt[set]),'r-', \
 		label = '_nolegend_')
@@ -383,9 +387,9 @@ if __name__=='__main__':
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-d', '--directory', type=str, default="")
-	parser.add_argument('-s', '--shift', type=str, default="")
-	parser.add_argument('-f', '--fits', type=str, default="")
-	parser.add_argument('-p', '--plots',type=str, default="")
+	parser.add_argument('-s', '--shift', action='store_true')
+	parser.add_argument('-f', '--fits', action='store_true')
+	parser.add_argument('-p', '--plots', action='store_true')
 	args = parser.parse_args()
 
 	# pull .root files from directory
@@ -404,10 +408,10 @@ if __name__=='__main__':
 
 	labels
 	
-	if args.plots == "y":
+	if args.plots:
 		plot(hist_vals,labels, direc)
 
-	if args.fits == "y":
+	if args.fits:
 		fit_hist_vals = getfithistvals(hist_vals,.20,.40)
 		centered_vals = center_boundaries(fit_hist_vals)
 		stats = apply_gauss_fit(centered_vals)
@@ -415,7 +419,7 @@ if __name__=='__main__':
 
 		printstats(stats, labels, files, direc)
 
-	if args.shift == "y":
+	if args.shift:
 		plot_shifted_t(hist_vals,labels,direc)
 
 	plt.show()
