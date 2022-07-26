@@ -64,7 +64,6 @@ def read_dir(dir_name):
 	for file in files:
 		dt, ch = open_root(file)
 		value_list.append((dt,ch))
-		print "Data extracted from ", file
 	return value_list, files
 	# list[1][1] = dt1, list[n] = dtn, chn
 
@@ -265,7 +264,7 @@ def plot(x,labels,direc):
 	fig2, ax2 = plt.subplots()
 
 	# establish colorgradient
-	color = iter(cm.rainbow(np.linspace(0, 1, len(x[0]))))
+	color = iter(cm.nipy_spectral(np.linspace(0, 1, 2*len(x[0]))))
 
 	# for number of datasets generate plots
 	for set in range(len(x[0])):
@@ -295,7 +294,7 @@ def plot_shifted_t(x,labels,direc):
 
 	fig3, ax3 = plt.subplots()
 
-	color = iter(cm.rainbow(np.linspace(0, 1, len(x[0]))))
+	color = iter(cm.nipy_spectral(np.linspace(0, 1, 2*len(x[0]))))
 
 	for set in range(len(x[0])):
 		c = next(color)
@@ -313,47 +312,48 @@ def plot_shifted_t(x,labels,direc):
 	fig3.savefig(direc + "/Shifted_t.png")
 
 def plot_fits(x, x_full, labels, direc):
-
-	fig4, ax4 = plt.subplots()
-	fig5, ax5 = plt.subplots()
+	fig4, ax4 = plt.subplots(len(x[0]))
+	fig5, ax5 = plt.subplots(len(x[0]))
 
 	stats = apply_gauss_fit(x)
 	t_popt = stats[2]
 	c_popt = stats[6]
 
-	color = iter(cm.rainbow(np.linspace(0, 1, len(x[0]))))
-
+	color = iter(cm.nipy_spectral(np.linspace(0, 1, 2*len(x[0]))))
+	
 	for set in range(len(x[0])):
 		c = next(color)
-
+		
 		# full tts plot
-		ax4.step(x_full[0][set][:-1],x_full[1][set], where='mid', \
+		ax4[set].step(x_full[0][set][:-1],x_full[1][set], where='mid', \
 		label='%s data' % set, c = c)
 		# plot cropped tts plot (fit area)
-		ax4.step(x[0][set],x[1][set], c = c, where = 'mid', \
+		ax4[set].step(x[0][set],x[1][set], c = c, where = 'mid', \
 		linewidth=2, label='_nolegend_')
 		# plot gauss fit
-		ax4.plot(x[0][set],Gauss(x[0][set], *t_popt[set]),'r-', \
+		ax4[set].plot(x[0][set],Gauss(x[0][set], *t_popt[set]),'r-', \
 		label='_nolegend_')
 
+		ax4[set].set_xlabel("Time [ns]")
+		ax4[set].set_ylabel("Relative Intnsity")
+		ax4[set].set_title(labels[set],loc='left',fontsize=10)
+
 		# full Q plot
-		ax5.step(x_full[3][set][:-1],x_full[4][set], where='mid', \
+		ax5[set].step(x_full[3][set][:-1],x_full[4][set], where='mid', \
 		label='%s data' % set, c = c)
 		# plot cropped Q plot (fit area)
-		ax5.step(x[3][set],x[4][set], c = c, where='mid', \
+		ax5[set].step(x[3][set],x[4][set], c = c, where='mid', \
 		linewidth=2, label='_nolegend_')
 		# plot gauss fit 
-		ax5.plot(x[3][set],Gauss(x[3][set],*c_popt[set]),'r-', \
+		ax5[set].plot(x[3][set],Gauss(x[3][set],*c_popt[set]),'r-', \
 		label = '_nolegend_')
 
-	fig4.suptitle("Zoomed TTS with Gaussian Fit")
-	ax4.set_xlabel("time [ns]")
-	ax4.set_ylabel("Relative Intnsity")
-	ax4.legend(labels)
-	fig5.suptitle("Zoomed Charge Peak with Gaussian Fit")
-	ax5.set_xlabel("Charge [pC]")
-	ax5.set_ylabel("Relative Intensity")
-	ax5.legend(labels)
+		ax5[set].set_xlabel("Charge [pC]")
+		ax5[set].set_ylabel("Relative Intensity")
+		ax5[set].set_title(labels[set],loc='left',fontsize=10)
+
+	fig4.suptitle("Zoomed TTS, Fit")
+	fig5.suptitle("Zoomed Charge Peak, Fit")
 
 	fig4.savefig(direc + "/TTS_Fit.png")
 	fig5.savefig(direc + "/Q_fit.png")
@@ -362,10 +362,8 @@ def printstats(x, labels, files, direc):
 	
 	t = pretty(['Dataset','Label','TTS Mean','TTS FWHM','TTS STD'])
 	c = pretty(['Dataset','Label','Q Mean','Q FWHM','Q STD'])
-	t.title = 'TTS'
-	t.padding_width = 1
 	filenames = [name.rsplit('/',1)[-1] for name in files]
-
+	
 	for sets in range(len(labels)):
 		t.add_row([filenames[sets], labels[sets], x[0][sets], \
 		x[8][sets], x[1][sets]])
@@ -373,8 +371,9 @@ def printstats(x, labels, files, direc):
 		c.add_row([filenames[sets], labels[sets], x[4][sets], \
 		x[9][sets], x[5][sets]])
 	t, c
-	print(t)
-	print(c)
+
+	print t
+	print c
 
 	ttable = t.get_string()
 	ctable = c.get_string()
@@ -398,11 +397,15 @@ if __name__=='__main__':
 		data, files = read_dir(direc)
 	
 		labels = []
+		filenames = [name.rsplit('/',1)[-1] for name in files]
+
+		print filenames
 
 		for sets in range(len(files)):
 			labels.append(raw_input("Input legend label for dataset: "))
 		labels
 		
+
 		# build histogram vals for each set
 		hist_vals = gethistvals(data)
 
@@ -412,7 +415,8 @@ if __name__=='__main__':
 		plot(hist_vals,labels, direc)
 
 	if args.fits:
-		fit_hist_vals = getfithistvals(hist_vals,.20,.40)
+		# .20 for tts and .40 charg
+		fit_hist_vals = getfithistvals(hist_vals,.20,.30)
 		centered_vals = center_boundaries(fit_hist_vals)
 		stats = apply_gauss_fit(centered_vals)
 		plot_fits(centered_vals,center_boundaries(hist_vals),labels,direc)
