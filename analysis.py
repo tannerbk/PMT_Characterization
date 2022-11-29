@@ -2,17 +2,15 @@ import os
 import ROOT
 import sys
 import subprocess
-import argparse
+import settings
 import psycopg2
-
-OUTPUT = "/home/www/pmt_characterization_website/app/static/images/"
 
 def connect_to_db():
     '''
     Connect to the PMT testing database.
     '''
     conn = psycopg2.connect('host=%s dbname=%s user=%s password=%s' % \
-                            ('localhost', 'pmt_testing', 'postgres', 'b33feroni'))
+                            (settings.dbhost, settings.dbname, settings.dbuser, settings.dbpass))
 
     cursor = conn.cursor()
     return conn, cursor
@@ -30,15 +28,15 @@ def write_to_db(source, pmtid, pmt_type, hv,
 
     mc = comp.replace("_", " ")
 
+    # Insert the data into the database
     cursor.execute("INSERT INTO pmt_information "
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
                    "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
                    "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err)"
-                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', '%s', %f, %f, %f, %f)" % \
-                   (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, \
-                    q_peak, q_width, q_high, q_pv, entries, thresh, cr, \
-                    mc, comment, tq_cut, t_thresh, settle, tts_err))
+                   "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', "
+                   "'%s', %f, %f, %f, %f)" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, \
+                   q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err))
 
     conn.commit()
 
@@ -125,7 +123,9 @@ def fit_charge(hq, interactive):
 
 
 def fit_timing(ht, entries, interactive):
-
+    '''
+    Fit the PMT timing histogram and extract relevant paramters.
+    '''
     c = ROOT.TCanvas("c", "c", 800, 600)
 
     m1 = ht.GetMaximumBin()
@@ -199,7 +199,9 @@ def fit_timing(ht, entries, interactive):
 
 
 def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
-
+    '''
+    Open the processed .root files and extract the timing/charge histograms
+    '''
     f = ROOT.TFile.Open(fname)
     t = f.Get("output")
 
@@ -238,23 +240,28 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
 
 def run_analysis(datafile, output_name, pedestal, source):
-
+    '''
+    Run the analysis code over the data files
+    '''
     if source == "Cherenkov": led = 0
     if source == "LED": led = 1
 
-    # TO-DO, make inputs
+    # The command to run the C++ analysis code
     command = ("/data/snoplus/home/tannerbk/pmt_characterization/src/run_pmt_characterization %s %s "
-               "lappd_0 gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % (datafile, output_name, pedestal, led))
+               "%s gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % (datafile, output_name, settings.digit_name, pedestal, led))
 
     print ("Running: %s" % command)
 
     commands = command.split()
 
+    # Run the analysis code
     subprocess.call(commands)
 
 
 def create_event_file(directory, ofile, max_files):
-
+    '''
+    Write the list of hdf5 data files into a file to process.
+    '''
     event_file = open(ofile, "w")
 
     count = 0
@@ -270,7 +277,9 @@ def create_event_file(directory, ofile, max_files):
 
 
 def write_root_file(output, ht, hq):
-
+    '''
+    Write the output root file
+    '''
     f = ROOT.TFile.Open(output, "RECREATE")
     ht.Write()
     hq.Write()
@@ -278,7 +287,9 @@ def write_root_file(output, ht, hq):
 
 
 def pretty_plot(h, xname):
-
+    '''
+    Beautify the root histograms
+    '''
     h.SetTitle("")
     h.GetYaxis().SetTitle("Counts")
     h.GetXaxis().SetTitle(xname)
@@ -293,6 +304,7 @@ def pretty_plot(h, xname):
 
 if __name__=='__main__':
 
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--source', type=str, required=True)
     parser.add_argument('-d', '--directory', type=str, required=True)
@@ -311,8 +323,10 @@ if __name__=='__main__':
     parser.add_argument('-x', '--save', action="store_true")
     parser.add_argument('-y', '--interactive', action="store_true")
     parser.add_argument('-z', '--max_files', type=int, default=0)
+    parser.add_argument('-a', '--force-overwrite', action="store_true") 
     args = parser.parse_args()
 
+    # Prepare the string formatting
     if args.source != "LED":
         source = args.source.capitalize()
     else:
@@ -321,21 +335,18 @@ if __name__=='__main__':
     pmt_type = args.pmt_type.upper() 
     magnetic_compensation = args.magnetic_compensation.capitalize()
 
-    source_options = ["Cherenkov", "LED"]
-
-    if source not in source_options:
+    # Check the source and PMT selected are valid
+    if source not in settings.source_options:
         print ("Invalid source.")
-        print ("Options:", source_options)
+        print ("Options:", settings.source_options)
         sys.exit(1)
 
-    pmt_options = ['R7081', 'R11780', 'R14688', 'H11934']
-
-    if pmt_type not in pmt_options:
+    if pmt_type not in settings.pmt_options:
         print ("Invalid pmt type:", pmt_type)
-        print ("Options:", pmt_options)
+        print ("Options:", settings.pmt_options)
         sys.exit(1) 
-       
 
+    # Setup the output filename
     output_name = pmt_id + "_" + str(args.source) + "_" 
     output_name += str(args.high_voltage) + "V" + "_" + magnetic_compensation
     output_name += "_" + str(args.trigger_threshold) + "mV"
@@ -343,31 +354,37 @@ if __name__=='__main__':
     output_name += "_" + str(args.settle_time) + "Hrs"
     output_name += "_" + args.note
 
-    dirname = OUTPUT + output_name
-
+    # Create output directory
+    dirname = settings.output_dir + output_name
     try:
         os.makedirs(dirname,0777)
     except OSError:
-        pass
-
+        print ("Error directory already exists. Use -a to force overwrite the data.")
+        if not args.force_overwrite:
+            sys.exit(1)
     os.chdir(dirname)
 
+    # Create list of hdf5 datafiles
     event_file = create_event_file(args.directory, args.txt_file, args.max_files)
-
     datafile = dirname + "/" + args.txt_file
 
+    # Run the analysis code over the datafiles
     run_analysis(datafile, output_name, args.pedestal, source)
 
-    root_file = dirname + "/" + output_name + "_lappd_0_gr0_ch1.root"  
+    # Processed .root file output name
+    root_file = dirname + "/" + output_name + "_" + settings.digit_name + "_gr0_ch1.root"  
 
+    # Open processed .root file and extract the timing and charge histograms
     ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut, source)
 
+    # Beautify the plots
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
 
     print ("PMT ID %s" % pmt_id)
     print ("HV: %d V" % args.high_voltage)
 
+    # Now fit the timing and charge figures, which wedo diggerently for the different sources
     if source != "LED":
         tts, dark_rate, fr_late, tts_err = fit_timing(ht, entries, args.interactive)
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq, args.interactive)
@@ -375,6 +392,7 @@ if __name__=='__main__':
         tts, dark_rate, fr_late, tts_err = 0, 0, 0, 0
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
 
+    # Save information to the database
     if args.save:
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
