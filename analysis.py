@@ -5,6 +5,7 @@ import subprocess
 import settings
 import psycopg2
 
+
 def connect_to_db():
     '''
     Connect to the PMT testing database.
@@ -14,6 +15,42 @@ def connect_to_db():
 
     cursor = conn.cursor()
     return conn, cursor
+
+
+def check_db(source, pmtid, pmt_type, hv, comp, comment, settle):
+    '''
+    Check whether an entry already exists in the database
+    '''
+    conn, cursor = connect_to_db()
+
+    if not comment:
+        cursor.execute("SELECT key FROM pmt_information WHERE source='%s' AND "
+                       "pmt_id='%s' AND pmt_type='%s' AND high_voltage=%s AND "
+                       "magnetic_compensation='%s' AND settling_time=%s" % \
+                       (source, pmtid, pmt_type, hv, comp, settle))
+
+    try:
+        return int(cursor.fetchone()[0]) 
+    except Exception:
+        return None
+
+
+def update_db(key, source, pmtid, pmt_type, hv,
+              tts, lp, ap, pp, dr,
+              q_peak, q_width, q_high, q_pv,
+              entries, thresh, cr, comp, comment,
+              tq_cut, t_thresh, settle, tts_err):
+    '''
+    Write to PMT testing information to the database.
+    '''
+    conn, cursor = connect_to_db()
+
+    mc = comp.replace("_", " ")
+
+    # Insert the data into the database
+    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, key))
+
+    conn.commit()
 
 
 def write_to_db(source, pmtid, pmt_type, hv,
@@ -39,6 +76,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err))
 
     conn.commit()
+
 
 def fit_charge_led(hq):
     '''
@@ -99,8 +137,6 @@ def fit_charge(hq, interactive):
     hq.GetXaxis().SetRangeUser(-0.3, 7.0)
     hq.GetYaxis().SetRangeUser(0.0, mmax*1.25)
 
-    c.Print("charge.png")
-
     b1 = hq.FindBin(qmean - 3*qsigma)
     b2 = hq.FindBin(qmean + 3*qsigma)
     b3 = hq.FindBin(10.0)
@@ -115,9 +151,13 @@ def fit_charge(hq, interactive):
     print ("High charge rate: %.2f pct" % high_charge_pct)
     print ("Peak to value: %.2f" % p_to_v)
 
+    c.Update()
+
     if interactive:
         print ("Hit enter to continue.")
         raw_input()
+    else:
+        c.Print("charge.png")
 
     return qmean, qsigma, high_charge_pct, p_to_v
 
@@ -138,15 +178,15 @@ def fit_timing(ht, entries, interactive):
     tts = fit.GetParameter(2)
     tts_unc = fit.GetParError(2)
 
-    df_low = 16
-    df_high = 6
+    df_low = 10
+    df_high = 60
 
-    dark_fit = ROOT.TF1("pol0", "pol0", c1 - df_low, c1 - df_high)
-    ht.Fit(dark_fit, "LQ0", "", c1 - df_low, c1 - df_high)
+    dark_fit = ROOT.TF1("pol0", "pol0", df_low, df_high)
+    ht.Fit(dark_fit, "LQ0", "", df_low, df_high)
 
     p0 = dark_fit.GetParameter(0)
     # To-do get bin-width automatically
-    dark_rate = p0/(0.1*1e-9*entries)
+    dark_rate = p0/(0.1*1e-9*entries) # Bins are 0.1ns wide
 
     c_prompt_low = c1 - 4.0
     c_late_low = c1 + 4.0
@@ -176,19 +216,25 @@ def fit_timing(ht, entries, interactive):
 
     c.Update()
 
-    c.Print("time_zoomed.png")
-
     if interactive:
         print ("Hit enter to continue.")
         raw_input()
+    else:
+        c.Print("time_zoomed.png")
 
-    ht.GetXaxis().SetRangeUser(-20.0, 100.0)
+    m1 = ht.GetMaximum()
+    ht.GetXaxis().SetRangeUser(0.0, 140.0)
+    ht.GetYaxis().SetRangeUser(1e-4, 1.2*m1)
 
     c.SetLogy()
 
     c.Update()
 
-    c.Print("time.png")
+    if interactive:
+        print ("Hit enter to continue.")
+        raw_input()
+    else:
+        c.Print("time.png")
 
     print ("TTS (sigma): %.2f ns +/- %.2f") % (tts, tts_unc)
     print ("TTS (FWHM): %.2f ns" % (float(tts)*2.355))
@@ -211,7 +257,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
     ht.SetDirectory(0)
     hq.SetDirectory(0)
 
-    print "Entries:", t.GetEntries()
+    print "Processing", t.GetEntries(), "events"
     entries = 0
     coincidence_rate = 0.0
     for i in range(t.GetEntries()):
@@ -230,6 +276,8 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
         if(t.peak_voltage > threshold): continue
         if(t.peak_voltage_trigger > trigger_threshold): continue
 
+        if((t.charge - t.charge_empty) > 1.6): continue
+
         coincidence_rate += 1.0
 
         ht.Fill(t.deltat)
@@ -239,7 +287,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
     return ht, hq, entries, coincidence_rate
 
 
-def run_analysis(datafile, output_name, pedestal, source):
+def run_analysis(wd, datafile, output_name, pedestal, source):
     '''
     Run the analysis code over the data files
     '''
@@ -247,8 +295,8 @@ def run_analysis(datafile, output_name, pedestal, source):
     if source == "LED": led = 1
 
     # The command to run the C++ analysis code
-    command = ("/data/snoplus/home/tannerbk/pmt_characterization/src/run_pmt_characterization %s %s "
-               "%s gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % (datafile, output_name, settings.digit_name, pedestal, led))
+    command = ("%s/src/run_pmt_characterization %s %s %s gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % \
+              (wd, datafile, output_name, settings.digit_name, pedestal, led))
 
     print ("Running: %s" % command)
 
@@ -302,6 +350,7 @@ def pretty_plot(h, xname):
     h.GetYaxis().SetTitleFont(132)
     h.SetStats(0)
 
+
 if __name__=='__main__':
 
     import argparse
@@ -354,14 +403,25 @@ if __name__=='__main__':
     output_name += "_" + str(args.settle_time) + "Hrs"
     output_name += "_" + args.note
 
+    wd = os.getcwd()
+    update_database = False
+
     # Create output directory
     dirname = settings.output_dir + output_name
     try:
         os.makedirs(dirname,0777)
     except OSError:
+        key = check_db(source, pmt_id, pmt_type, args.high_voltage, magnetic_compensation, args.note, args.settle_time)
         print ("Error directory already exists. Use -a to force overwrite the data.")
+        if key and args.save:
+            print ("You will also override database entry:", key)
+            update_database = True
         if not args.force_overwrite:
             sys.exit(1)
+
+    print ("PMT ID %s" % pmt_id)
+    print ("HV: %d V" % args.high_voltage)
+
     os.chdir(dirname)
 
     # Create list of hdf5 datafiles
@@ -369,7 +429,7 @@ if __name__=='__main__':
     datafile = dirname + "/" + args.txt_file
 
     # Run the analysis code over the datafiles
-    run_analysis(datafile, output_name, args.pedestal, source)
+    run_analysis(wd, datafile, output_name, args.pedestal, source)
 
     # Processed .root file output name
     root_file = dirname + "/" + output_name + "_" + settings.digit_name + "_gr0_ch1.root"  
@@ -381,9 +441,6 @@ if __name__=='__main__':
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
 
-    print ("PMT ID %s" % pmt_id)
-    print ("HV: %d V" % args.high_voltage)
-
     # Now fit the timing and charge figures, which wedo diggerently for the different sources
     if source != "LED":
         tts, dark_rate, fr_late, tts_err = fit_timing(ht, entries, args.interactive)
@@ -393,8 +450,15 @@ if __name__=='__main__':
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
 
     # Save information to the database
-    if args.save:
+    if args.save and not update_database:
+        print "Inserting into database."
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
+                    fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
+                    p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
+                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, tts_err)
+    elif args.save and update_database:
+        print "Updating database."
+        update_db(key, args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
                     args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, tts_err)

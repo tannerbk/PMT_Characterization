@@ -130,6 +130,9 @@ void PMTChar::pmt_characterization(char* datafile,
     Attribute _bits;
     double bits = 0;
 
+    // For average waveform
+    std::vector<double> waveform_voltage;
+
     // Open output filename and write data to a TTree
     char fname[256];
     sprintf(fname, "%s_%s_%s_%s.root", outname, dig, gr, ch);
@@ -254,6 +257,8 @@ void PMTChar::pmt_characterization(char* datafile,
 
             meta.nwaveforms += 1;
 
+            if(j == 0) waveform_voltage.resize(window_length);
+
             // Read the waveforms for the CHESS and trigger PMT and the associated
             // raw triggers for the corresponding digitizer.
             for(size_t idc = 0; idc < dataclusters.size(); idc++){
@@ -315,6 +320,8 @@ void PMTChar::pmt_characterization(char* datafile,
                 double trigger_voltage = fTools.get_voltage(i, datacluster_trigger, data.pedestal_trigger, dy);
                 double tr_voltage = fTools.get_voltage(i, datacluster_tr, data.pedestal_tr, dy);
                 double tr_trigger_voltage = fTools.get_voltage(i, datacluster_trigger_tr, data.pedestal_trigger_tr, dy);
+
+                waveform_voltage.at(i) += voltage;
 
                 if(simple_write_waveforms){
                     wfm->SetBinContent(i, voltage);
@@ -502,8 +509,10 @@ void PMTChar::pmt_characterization(char* datafile,
             }
 
             if(simple_write_waveforms){
-                wfm->Write();
-                wfm_trig->Write();
+                if(data.peak_voltage < voltage_threshold){
+                    wfm->Write();
+                    wfm_trig->Write();
+                }
             }
 
             meta.coincidence_count += 1;
@@ -514,11 +523,19 @@ void PMTChar::pmt_characterization(char* datafile,
     }
     ifs.close();
 
+
+    TH1D* avg_wfm = new TH1D("avg_wfm", "", waveform_voltage.size(), 0, waveform_voltage.size()*dx*1e9);
+    for(size_t i = 0; i < waveform_voltage.size(); i++){
+        avg_wfm->SetBinContent(i, waveform_voltage[i]/meta.nwaveforms);
+        //avg_wfm->SetBinError(i, 5e-6);
+    }
+
     cout << "Total coincidence rate: " << double(meta.coincidence_count)*100/meta.nwaveforms << "%" << endl;
     meta.pedestal_window = pedestal_window;
     meta.version = VERSION;
     meta_output->Fill();
     meta_output->Write();
+    avg_wfm->Write();
     output->Write();
     fout->Close();
 }

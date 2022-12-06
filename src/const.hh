@@ -17,7 +17,7 @@ const int nsamples_above_threshold_threshold = 5;
 const int sample_offset = 25;
 
 // Name of samples a the end of the waveform to skip
-const int sample_offset_last = 124;
+const int sample_offset_last = 24;
 
 // Num. of samples to look back at CHESS PMT
 const int lookback = 50;
@@ -46,7 +46,7 @@ const double const_frac_thresh_trigger = 0.2;
 // Const. thresh on trigger, in mV
 const double const_thresh_trigger = -2.0;
 
-// Write the fit waveforms to file
+// Write the waveforms to file
 const bool simple_write_waveforms = false;
 
 const bool CONST_FRAC_TRIGGER = false;
