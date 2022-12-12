@@ -39,7 +39,7 @@ def update_db(key, source, pmtid, pmt_type, hv,
               tts, lp, ap, pp, dr,
               q_peak, q_width, q_high, q_pv,
               entries, thresh, cr, comp, comment,
-              tq_cut, t_thresh, settle, tts_err):
+              tq_cut, t_thresh, settle, tts_err, dr_err):
     '''
     Write to PMT testing information to the database.
     '''
@@ -48,7 +48,7 @@ def update_db(key, source, pmtid, pmt_type, hv,
     mc = comp.replace("_", " ")
 
     # Insert the data into the database
-    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, key))
+    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s, dark_rate_err=%s WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, dr_err, key))
 
     conn.commit()
 
@@ -57,7 +57,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                 tts, lp, ap, pp, dr,
                 q_peak, q_width, q_high, q_pv,
                 entries, thresh, cr, comp, comment,
-                tq_cut, t_thresh, settle, tts_err):
+                tq_cut, t_thresh, settle, tts_err, dr_err):
     '''
     Write to PMT testing information to the database.
     '''
@@ -70,10 +70,11 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
                    "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
-                   "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err)"
+                   "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err, dark_rate_err)"
                    "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', "
-                   "'%s', %f, %f, %f, %f)" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, \
-                   q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err))
+                   "'%s', %f, %f, %f, %f, %f)" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, \
+                   q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, \
+                   dr_err))
 
     conn.commit()
 
@@ -185,8 +186,16 @@ def fit_timing(ht, entries, interactive):
     ht.Fit(dark_fit, "LQ0", "", df_low, df_high)
 
     p0 = dark_fit.GetParameter(0)
+    p0_err = dark_fit.GetParError(0)
     # To-do get bin-width automatically
     dark_rate = p0/(0.1*1e-9*entries) # Bins are 0.1ns wide
+    dark_rate_error = p0_err/(0.1*1e-9*entries)
+
+    print p0, "+/-", p0_err, "events per 0.1 ns"
+    ht.GetXaxis().SetRangeUser(df_low, df_high)
+    print ht.Integral(), "events per 50ns"
+
+    ht.GetXaxis().SetRangeUser(-50, 150)
 
     c_prompt_low = c1 - 4.0
     c_late_low = c1 + 4.0
@@ -241,7 +250,7 @@ def fit_timing(ht, entries, interactive):
     print ("Dark rate: %.1f Hz" % dark_rate)
     print ("Late fraction: %.2f pct" % fr_late)
 
-    return tts, dark_rate, fr_late, tts_unc
+    return tts, dark_rate, fr_late, tts_unc, dark_rate_error
 
 
 def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
@@ -412,12 +421,12 @@ if __name__=='__main__':
         os.makedirs(dirname,0777)
     except OSError:
         key = check_db(source, pmt_id, pmt_type, args.high_voltage, magnetic_compensation, args.note, args.settle_time)
-        print ("Error directory already exists. Use -a to force overwrite the data.")
-        if key and args.save:
+        if not args.force_overwrite:
+            print ("Error directory already exists. Use -a to force overwrite the data.")
+            sys.exit(1)
+        elif key and args.save:
             print ("You will also override database entry:", key)
             update_database = True
-        if not args.force_overwrite:
-            sys.exit(1)
 
     print ("PMT ID %s" % pmt_id)
     print ("HV: %d V" % args.high_voltage)
@@ -443,10 +452,10 @@ if __name__=='__main__':
 
     # Now fit the timing and charge figures, which wedo diggerently for the different sources
     if source != "LED":
-        tts, dark_rate, fr_late, tts_err = fit_timing(ht, entries, args.interactive)
+        tts, dark_rate, fr_late, tts_err, dark_rate_err = fit_timing(ht, entries, args.interactive)
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq, args.interactive)
     else:
-        tts, dark_rate, fr_late, tts_err = 0, 0, 0, 0
+        tts, dark_rate, fr_late, tts_err, dark_rate_err = 0, 0, 0, 0, 0
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
 
     # Save information to the database
@@ -455,13 +464,15 @@ if __name__=='__main__':
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
-                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, tts_err)
+                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, \
+                    tts_err, dark_rate_err)
     elif args.save and update_database:
         print "Updating database."
         update_db(key, args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
-                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, tts_err)
+                    args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, \
+                    tts_err, dark_rate_err)
 
     write_root_file(args.root_file, ht, hq)
 
