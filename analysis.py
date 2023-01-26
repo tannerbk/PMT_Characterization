@@ -381,7 +381,7 @@ if __name__=='__main__':
     parser.add_argument('-k', '--channel', type=str, required=True)
     parser.add_argument('-n', '--note', type=str, default="")
     parser.add_argument('-m', '--settle-time', type=float, default=0.0)
-    parser.add_argument('-q', '--trigger-q-cut', type=float, default=10.0)
+    parser.add_argument('-q', '--trigger-q-cut', type=float, default=5.0)
     parser.add_argument('-w', '--pedestal', type=int, default=200)
     parser.add_argument('-t', '--threshold', type=float, default=-5.0)
     parser.add_argument('-r', '--trigger-threshold', type=float, default=-40.0)
