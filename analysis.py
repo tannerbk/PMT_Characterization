@@ -39,7 +39,7 @@ def update_db(key, source, pmtid, pmt_type, hv,
               tts, lp, ap, pp, dr,
               q_peak, q_width, q_high, q_pv,
               entries, thresh, cr, comp, comment,
-              tq_cut, t_thresh, settle, tts_err, dr_err):
+              tq_cut, t_thresh, settle, tts_err, dr_err, odir):
     '''
     Write to PMT testing information to the database.
     '''
@@ -48,7 +48,7 @@ def update_db(key, source, pmtid, pmt_type, hv,
     mc = comp.replace("_", " ")
 
     # Insert the data into the database
-    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s, dark_rate_err=%s WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, dr_err, key))
+    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s, dark_rate_err=%s, directory='%s' WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, dr_err, odir, key))
 
     conn.commit()
 
@@ -57,7 +57,7 @@ def write_to_db(source, pmtid, pmt_type, hv,
                 tts, lp, ap, pp, dr,
                 q_peak, q_width, q_high, q_pv,
                 entries, thresh, cr, comp, comment,
-                tq_cut, t_thresh, settle, tts_err, dr_err):
+                tq_cut, t_thresh, settle, tts_err, dr_err, odir):
     '''
     Write to PMT testing information to the database.
     '''
@@ -70,11 +70,11 @@ def write_to_db(source, pmtid, pmt_type, hv,
                    "(source, pmt_id, pmt_type, high_voltage, tts_sigma, late_pulsing_pct, after_pulsing_pct, "
                    "pre_pulsing_pct, dark_rate, charge_peak, charge_width, high_charge_pct, "
                    "charge_peak_to_valley, entries, threshold, coincidence_rate, magnetic_compensation, " 
-                   "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err, dark_rate_err)"
+                   "comment, trigger_q_cut, trigger_threshold, settling_time, tts_sigma_err, dark_rate_err, directory)"
                    "VALUES ('%s', '%s', '%s', %d, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d, %f, %f, '%s', "
-                   "'%s', %f, %f, %f, %f, %f)" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, \
+                   "'%s', %f, %f, %f, %f, %f, '%s')" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, \
                    q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, \
-                   dr_err))
+                   dr_err, odir))
 
     conn.commit()
 
@@ -106,7 +106,7 @@ def fit_charge_led(hq):
     return qmean, qsigma, 0, 0
 
 
-def fit_charge(hq, interactive):
+def fit_charge(hq, hq_cut, interactive):
     '''
     Fit the charge distribution to extract relevant parameters.
     '''
@@ -123,13 +123,16 @@ def fit_charge(hq, interactive):
     hq.Fit(fit, "Q0", "", c1 - fit_range, c1 + fit_range)
 
     hq.Draw("")
+    hq_cut.SetLineColor(ROOT.kBlue)
+    hq_cut.Draw("same")
     fit.Draw("same")
 
     qmean = fit.GetParameter(1)
     qsigma = fit.GetParameter(2)
 
-    hq.GetXaxis().SetRangeUser(0.2, 0.6)
-    mmin = hq.GetMinimum()
+    #hq.GetXaxis().SetRangeUser(0.2, 0.6)
+    mb = hq.GetXaxis().FindBin(0.5)
+    mmin = hq.GetBinContent(mb)
 
     p_to_v = 0
     if mmin > 0:
@@ -150,7 +153,7 @@ def fit_charge(hq, interactive):
     print ("Charge mean: %.2f pC" % qmean)
     print ("Charge width: %.2f pC" % qsigma)
     print ("High charge rate: %.2f pct" % high_charge_pct)
-    print ("Peak to value: %.2f" % p_to_v)
+    print ("Peak to valley: %.2f" % p_to_v)
 
     c.Update()
 
@@ -191,9 +194,7 @@ def fit_timing(ht, entries, interactive):
     dark_rate = p0/(0.1*1e-9*entries) # Bins are 0.1ns wide
     dark_rate_error = p0_err/(0.1*1e-9*entries)
 
-    print p0, "+/-", p0_err, "events per 0.1 ns"
     ht.GetXaxis().SetRangeUser(df_low, df_high)
-    print ht.Integral(), "events per 50ns"
 
     ht.GetXaxis().SetRangeUser(-50, 150)
 
@@ -262,9 +263,11 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
     ht = ROOT.TH1D("time","time",2000,-50,150)
     hq = ROOT.TH1D("charge","charge",6000,-0.5,119.5)
+    hq_cut = ROOT.TH1D("charge_cut","charge_cut",6000,-0.5,119.5)
 
     ht.SetDirectory(0)
     hq.SetDirectory(0)
+    hq_cut.SetDirectory(0)
 
     print "Processing", t.GetEntries(), "events"
     entries = 0
@@ -276,27 +279,31 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
         # Bad pedestal window
         if(t.stddev > 0.04): continue
 
-        hq.Fill(t.charge - t.charge_empty)
+        q = t.charge - t.charge_empty
+
+        hq.Fill(q)
 
         if(source == "Cherenkov" and t.trigger_charge < trigger_q_cut): continue
 
         entries += 1
 
-        if(t.peak_voltage > threshold): continue
-        if(t.peak_voltage_trigger > trigger_threshold): continue
-
-        if((t.charge - t.charge_empty) > 1.6): continue
+        #if(t.peak_voltage > threshold): continue
+        #if(t.peak_voltage_trigger > trigger_threshold): continue
+        if(q > 3.0 or q < 0.3): continue
+        #if(t.samples_above_threshold < 3): continue
 
         coincidence_rate += 1.0
 
+        hq_cut.Fill(t.charge - t.charge_empty)
         ht.Fill(t.deltat)
 
     coincidence_rate /= float(t.GetEntries())
+    print ("Coincidence rate after analysis cuts: %.2f pct" % (coincidence_rate*100))
 
-    return ht, hq, entries, coincidence_rate
+    return ht, hq, hq_cut, entries, coincidence_rate
 
 
-def run_analysis(wd, datafile, output_name, pedestal, source):
+def run_analysis(wd, datafile, output_name, pedestal, source, channel):
     '''
     Run the analysis code over the data files
     '''
@@ -304,8 +311,8 @@ def run_analysis(wd, datafile, output_name, pedestal, source):
     if source == "LED": led = 1
 
     # The command to run the C++ analysis code
-    command = ("%s/src/run_pmt_characterization %s %s %s gr0 ch1 gr0 ch0 gr0 ch2 %d %d" % \
-              (wd, datafile, output_name, settings.digit_name, pedestal, led))
+    command = ("%s/src/run_pmt_characterization %s %s %s gr0 %s gr0 ch0 gr0 ch2 %d %d" % \
+              (wd, datafile, output_name, settings.digit_name, channel, pedestal, led))
 
     print ("Running: %s" % command)
 
@@ -333,13 +340,14 @@ def create_event_file(directory, ofile, max_files):
     return event_file
 
 
-def write_root_file(output, ht, hq):
+def write_root_file(output, ht, hq, hq_cut):
     '''
     Write the output root file
     '''
     f = ROOT.TFile.Open(output, "RECREATE")
     ht.Write()
     hq.Write()
+    hq_cut.Write()
     f.Write()
 
 
@@ -370,6 +378,7 @@ if __name__=='__main__':
     parser.add_argument('-i', '--pmt-id', type=str, required=True)
     parser.add_argument('-p', '--pmt-type', type=str, required=True)
     parser.add_argument('-c', '--magnetic-compensation', type=str, required=True)
+    parser.add_argument('-k', '--channel', type=str, required=True)
     parser.add_argument('-n', '--note', type=str, default="")
     parser.add_argument('-m', '--settle-time', type=float, default=0.0)
     parser.add_argument('-q', '--trigger-q-cut', type=float, default=10.0)
@@ -438,22 +447,24 @@ if __name__=='__main__':
     datafile = dirname + "/" + args.txt_file
 
     # Run the analysis code over the datafiles
-    run_analysis(wd, datafile, output_name, args.pedestal, source)
+    run_analysis(wd, datafile, output_name, args.pedestal, source, args.channel)
 
     # Processed .root file output name
-    root_file = dirname + "/" + output_name + "_" + settings.digit_name + "_gr0_ch1.root"  
+    root_file = dirname + "/" + output_name + "_" + settings.digit_name + \
+                "_gr0_" + args.channel + ".root"  
 
     # Open processed .root file and extract the timing and charge histograms
-    ht, hq, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut, source)
+    ht, hq, hq_cut, entries, coinc_rate = open_tree(root_file, args.threshold, args.trigger_threshold, args.trigger_q_cut, source)
 
     # Beautify the plots
     pretty_plot(ht, "Time (ns)")
     pretty_plot(hq, "Charge (pC)")
+    pretty_plot(hq_cut, "Charge (pC)")
 
     # Now fit the timing and charge figures, which wedo diggerently for the different sources
     if source != "LED":
         tts, dark_rate, fr_late, tts_err, dark_rate_err = fit_timing(ht, entries, args.interactive)
-        q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq, args.interactive)
+        q_mean, q_width, high_charge_pct, p_to_v = fit_charge(hq, hq_cut, args.interactive)
     else:
         tts, dark_rate, fr_late, tts_err, dark_rate_err = 0, 0, 0, 0, 0
         q_mean, q_width, high_charge_pct, p_to_v = fit_charge_led(hq)
@@ -465,22 +476,25 @@ if __name__=='__main__':
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
                     args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, \
-                    tts_err, dark_rate_err)
+                    tts_err, dark_rate_err, args.directory)
     elif args.save and update_database:
         print "Updating database."
         update_db(key, args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
                     args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, \
-                    tts_err, dark_rate_err)
+                    tts_err, dark_rate_err, args.directory)
 
-    write_root_file(args.root_file, ht, hq)
+    write_root_file(args.root_file, ht, hq, hq_cut)
 
-    os.chmod(dirname + "/" + args.root_file, 0777)
-    os.chmod(dirname + "/" + args.txt_file, 0777)
-    os.chmod(root_file, 0777) 
-    os.chmod(dirname + "/" + "charge.png", 0777)
-    if source != "LED":
-        os.chmod(dirname + "/" + "time_zoomed.png", 0777)
-        os.chmod(dirname + "/" + "time.png", 0777)
-        os.chmod(dirname + "/" + "time.png", 0777)
+    try:
+        os.chmod(dirname + "/" + args.root_file, 0777)
+        os.chmod(dirname + "/" + args.txt_file, 0777)
+        os.chmod(root_file, 0777) 
+        os.chmod(dirname + "/" + "charge.png", 0777)
+        if source != "LED":
+            os.chmod(dirname + "/" + "time_zoomed.png", 0777)
+            os.chmod(dirname + "/" + "time.png", 0777)
+            os.chmod(dirname + "/" + "time.png", 0777)
+    except OSError:
+        pass

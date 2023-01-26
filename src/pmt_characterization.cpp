@@ -509,9 +509,9 @@ void PMTChar::pmt_characterization(char* datafile,
             }
 
             if(simple_write_waveforms){
-                if(data.peak_voltage < voltage_threshold){
-                    wfm->Write();
-                    wfm_trig->Write();
+                if(data.peak_voltage < voltage_threshold && data.deltat < 40.0){
+                  wfm->Write();
+                  wfm_trig->Write();
                 }
             }
 

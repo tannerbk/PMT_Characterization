@@ -47,7 +47,7 @@ const double const_frac_thresh_trigger = 0.2;
 const double const_thresh_trigger = -2.0;
 
 // Write the waveforms to file
-const bool simple_write_waveforms = false;
+const bool simple_write_waveforms = true;
 
 const bool CONST_FRAC_TRIGGER = false;
 

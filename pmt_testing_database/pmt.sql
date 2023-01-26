@@ -22,6 +22,20 @@ CREATE TABLE pmt_information(
     trigger_threshold        real, -- mV
     trigger_q_cut            real, -- pC
     magnetic_compensation    text NOT NULL,
-    comment                  text
+    comment                  text,
+    tts_sigma_err            real,
+    dark_rate_err            real,
+    directory                text
+)
+
+CREATE TABLE pmts(
+    pmt_id                   text,
+    high_voltage             smallint,
+    tts                      real,
+    charge_peak_to_valley    real,
+    dark_rate                real,
+    after_pulsing_pct        real,
+    location                 text,
+    final_test               bigint
 )
 
