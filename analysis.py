@@ -276,21 +276,20 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
 
         t.GetEntry(i)
 
-        # Bad pedestal window
+        # Bad pedestal window, should remove a tiny fraction of events
         if(t.stddev > 0.04): continue
 
         q = t.charge - t.charge_empty
 
         hq.Fill(q)
 
+        # Trigger Q selects the higher energy depositions
         if(source == "Cherenkov" and t.trigger_charge < trigger_q_cut): continue
 
         entries += 1
 
-        #if(t.peak_voltage > threshold): continue
-        #if(t.peak_voltage_trigger > trigger_threshold): continue
+        # Above the noise, below the 2PE peak
         if(q > 3.0 or q < 0.3): continue
-        #if(t.samples_above_threshold < 3): continue
 
         coincidence_rate += 1.0
 
@@ -383,7 +382,7 @@ if __name__=='__main__':
     parser.add_argument('-m', '--settle-time', type=float, default=0.0)
     parser.add_argument('-q', '--trigger-q-cut', type=float, default=5.0)
     parser.add_argument('-w', '--pedestal', type=int, default=200)
-    parser.add_argument('-t', '--threshold', type=float, default=-5.0)
+    parser.add_argument('-t', '--threshold', type=float, default=0.0)
     parser.add_argument('-r', '--trigger-threshold', type=float, default=-40.0)
     parser.add_argument('-f', '--txt-file', type=str, default="data.txt")
     parser.add_argument('-o', '--root-file', type=str, default="data.root")
