@@ -48,7 +48,7 @@ def update_db(key, source, pmtid, pmt_type, hv,
     mc = comp.replace("_", " ")
 
     # Insert the data into the database
-    cursor.execute("UPDATE pmt_information SET source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s, dark_rate_err=%s, directory='%s' WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, dr_err, odir, key))
+    cursor.execute("UPDATE pmt_information SET timestamp=now(), source='%s', pmt_id='%s', pmt_type='%s', high_voltage=%s, tts_sigma=%s, late_pulsing_pct=%s, after_pulsing_pct=%s, pre_pulsing_pct=%s, dark_rate=%s, charge_peak=%s, charge_width=%s, high_charge_pct=%s, charge_peak_to_valley=%s, entries=%s, threshold=%s, coincidence_rate=%s, magnetic_compensation='%s', comment='%s', trigger_q_cut=%s, trigger_threshold=%s, settling_time=%s, tts_sigma_err=%s, dark_rate_err=%s, directory='%s' WHERE key=%s" % (source, pmtid, pmt_type, hv, tts, lp, ap, pp, dr, q_peak, q_width, q_high, q_pv, entries, thresh, cr, mc, comment, tq_cut, t_thresh, settle, tts_err, dr_err, odir, key))
 
     conn.commit()
 
