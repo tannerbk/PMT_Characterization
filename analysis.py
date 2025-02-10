@@ -269,7 +269,7 @@ def open_tree(fname, threshold, trigger_threshold, trigger_q_cut, source):
     hq.SetDirectory(0)
     hq_cut.SetDirectory(0)
 
-    print "Processing", t.GetEntries(), "events"
+    print ("Processing", t.GetEntries(), "events")
     entries = 0
     coincidence_rate = 0.0
     for i in range(t.GetEntries()):
@@ -426,7 +426,7 @@ if __name__=='__main__':
     # Create output directory
     dirname = settings.output_dir + output_name
     try:
-        os.makedirs(dirname,0777)
+        os.makedirs(dirname,777)
     except OSError:
         key = check_db(source, pmt_id, pmt_type, args.high_voltage, magnetic_compensation, args.note, args.settle_time)
         if not args.force_overwrite:
@@ -470,14 +470,14 @@ if __name__=='__main__':
 
     # Save information to the database
     if args.save and not update_database:
-        print "Inserting into database."
+        print ("Inserting into database.")
         write_to_db(args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
                     args.note, args.trigger_q_cut, args.trigger_threshold, args.settle_time, \
                     tts_err, dark_rate_err, args.directory)
     elif args.save and update_database:
-        print "Updating database."
+        print ("Updating database.")
         update_db(key, args.source, pmt_id, pmt_type, args.high_voltage, tts, \
                     fr_late, 0.0, 0.0, dark_rate, q_mean, q_width, high_charge_pct, \
                     p_to_v, entries, args.threshold, coinc_rate, magnetic_compensation, \
@@ -487,13 +487,13 @@ if __name__=='__main__':
     write_root_file(args.root_file, ht, hq, hq_cut)
 
     try:
-        os.chmod(dirname + "/" + args.root_file, 0777)
-        os.chmod(dirname + "/" + args.txt_file, 0777)
-        os.chmod(root_file, 0777) 
-        os.chmod(dirname + "/" + "charge.png", 0777)
+        os.chmod(dirname + "/" + args.root_file, 777)
+        os.chmod(dirname + "/" + args.txt_file, 777)
+        os.chmod(root_file, 777) 
+        os.chmod(dirname + "/" + "charge.png", 777)
         if source != "LED":
-            os.chmod(dirname + "/" + "time_zoomed.png", 0777)
-            os.chmod(dirname + "/" + "time.png", 0777)
-            os.chmod(dirname + "/" + "time.png", 0777)
+            os.chmod(dirname + "/" + "time_zoomed.png", 777)
+            os.chmod(dirname + "/" + "time.png", 777)
+            os.chmod(dirname + "/" + "time.png", 777)
     except OSError:
         pass
