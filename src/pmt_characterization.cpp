@@ -23,7 +23,7 @@ using namespace H5;
 using namespace std;
 
 typedef struct DataCluster DataCluster;
-pmt_data data;
+pmt_data pdata;
 pmt_meta_data meta;
 
 void help(){
@@ -63,35 +63,35 @@ void PMTChar::data_structure(TTree* output){
     /*
     The output data structure
     */
-    output->Branch("time", &data.time);
-    output->Branch("time_ttl", &data.time_ttl);
-    output->Branch("dt_pmt", &data.dt);
-    output->Branch("time_trigger", &data.time_trigger);
-    output->Branch("time_trigger_ttl", &data.time_trigger_ttl);
-    output->Branch("dt_trigger", &data.dt_trigger);
-    output->Branch("deltat", &data.deltat);
+    output->Branch("time", &pdata.time);
+    output->Branch("time_ttl", &pdata.time_ttl);
+    output->Branch("dt_pmt", &pdata.dt);
+    output->Branch("time_trigger", &pdata.time_trigger);
+    output->Branch("time_trigger_ttl", &pdata.time_trigger_ttl);
+    output->Branch("dt_trigger", &pdata.dt_trigger);
+    output->Branch("deltat", &pdata.deltat);
 
-    output->Branch("pedestal", &data.pedestal);
-    output->Branch("pedestal_trigger", &data.pedestal_trigger);
-    output->Branch("pedestal_tr", &data.pedestal_tr);
-    output->Branch("pedestal_trigger_tr", &data.pedestal_trigger_tr);
-    output->Branch("pedestal_empty", &data.pedestal_empty);
+    output->Branch("pedestal", &pdata.pedestal);
+    output->Branch("pedestal_trigger", &pdata.pedestal_trigger);
+    output->Branch("pedestal_tr", &pdata.pedestal_tr);
+    output->Branch("pedestal_trigger_tr", &pdata.pedestal_trigger_tr);
+    output->Branch("pedestal_empty", &pdata.pedestal_empty);
 
-    output->Branch("stddev", &data.stddev);
-    output->Branch("stddev_trigger", &data.stddev_trigger);
+    output->Branch("stddev", &pdata.stddev);
+    output->Branch("stddev_trigger", &pdata.stddev_trigger);
 
-    output->Branch("charge", &data.charge);
-    output->Branch("charge_empty", &data.charge_empty);
-    output->Branch("trigger_charge", &data.trigger_charge);
-    output->Branch("trigger_charge_empty", &data.trigger_charge_empty);
+    output->Branch("charge", &pdata.charge);
+    output->Branch("charge_empty", &pdata.charge_empty);
+    output->Branch("trigger_charge", &pdata.trigger_charge);
+    output->Branch("trigger_charge_empty", &pdata.trigger_charge_empty);
 
-    output->Branch("samples_above_threshold", &data.samples_above_threshold);
-    output->Branch("ncrossings", &data.ncrossings);
+    output->Branch("samples_above_threshold", &pdata.samples_above_threshold);
+    output->Branch("ncrossings", &pdata.ncrossings);
 
-    output->Branch("peak_voltage", &data.peak_voltage);
-    output->Branch("peak_voltage_trigger", &data.peak_voltage_trigger);
-    output->Branch("peak_tr_voltage", &data.peak_tr_voltage);
-    output->Branch("peak_tr_voltage_trigger", &data.peak_tr_voltage_trigger);
+    output->Branch("peak_voltage", &pdata.peak_voltage);
+    output->Branch("peak_voltage_trigger", &pdata.peak_voltage_trigger);
+    output->Branch("peak_tr_voltage", &pdata.peak_tr_voltage);
+    output->Branch("peak_tr_voltage_trigger", &pdata.peak_tr_voltage_trigger);
 }
 
 void PMTChar::meta_structure(TTree* output){
@@ -273,23 +273,23 @@ void PMTChar::pmt_characterization(char* datafile,
                                                                        dy);
 
             // Baseline calculation for each channel
-            data.pedestal = pedestals[0];
-            data.pedestal_trigger = pedestals[1];
-            data.pedestal_tr = pedestals[2];
-            data.pedestal_trigger_tr = pedestals[3];
-            data.pedestal_empty = pedestals[4];
+            pdata.pedestal = pedestals[0];
+            pdata.pedestal_trigger = pedestals[1];
+            pdata.pedestal_tr = pedestals[2];
+            pdata.pedestal_trigger_tr = pedestals[3];
+            pdata.pedestal_empty = pedestals[4];
 
-            data.stddev = fTools.calculate_stddev(dataclusters[0],
-                                                  sample_offset,
-                                                  pedestal_window,
-                                                  //window_length - sample_offset_last,
-                                                  data.pedestal, dy);
+            pdata.stddev = fTools.calculate_stddev(dataclusters[0],
+                                                   sample_offset,
+                                                   pedestal_window,
+                                                   //window_length - sample_offset_last,
+                                                   pdata.pedestal, dy);
 
-            data.stddev_trigger = fTools.calculate_stddev(dataclusters[1],
-                                                          sample_offset,
-                                                          pedestal_window,
-                                                          //window_length - sample_offset_last,
-                                                          data.pedestal_trigger, dy);
+            pdata.stddev_trigger = fTools.calculate_stddev(dataclusters[1],
+                                                           sample_offset,
+                                                           pedestal_window,
+                                                           //window_length - sample_offset_last,
+                                                           pdata.pedestal_trigger, dy);
 
             // Location of the peak in samples
             peak_bin = 0;
@@ -298,17 +298,17 @@ void PMTChar::pmt_characterization(char* datafile,
             peak_tr_bin_trigger = 0;
 
             // Peak (in mV) for each waveform
-            data.peak_voltage = 0;
-            data.peak_tr_voltage = 0;
-            data.peak_voltage_trigger = 0;
-            data.peak_tr_voltage_trigger = 0;
+            pdata.peak_voltage = 0;
+            pdata.peak_tr_voltage = 0;
+            pdata.peak_voltage_trigger = 0;
+            pdata.peak_tr_voltage_trigger = 0;
 
             // N samples above threshold for CHESS PMT
-            data.samples_above_threshold = 0;
+            pdata.samples_above_threshold = 0;
             double nsamples_above = 0;
 
             bool crossed = false;
-            data.ncrossings = 0;
+            pdata.ncrossings = 0;
 
             // Loop through full window looking for pulses that crossed threshold.
             //for(unsigned int i = sample_offset; i < (window_length - sample_offset_last); i++){
@@ -316,35 +316,33 @@ void PMTChar::pmt_characterization(char* datafile,
             for(unsigned int i = pedestal_window; i < (window_length - sample_offset_last); i++){
             //for(unsigned int i = sample_offset; i < pedestal_window; i++){
 
-                double voltage = fTools.get_voltage(i, datacluster, data.pedestal, dy);
-                double trigger_voltage = fTools.get_voltage(i, datacluster_trigger, data.pedestal_trigger, dy);
-                double tr_voltage = fTools.get_voltage(i, datacluster_tr, data.pedestal_tr, dy);
-                double tr_trigger_voltage = fTools.get_voltage(i, datacluster_trigger_tr, data.pedestal_trigger_tr, dy);
+                double voltage = fTools.get_voltage(i, datacluster, pdata.pedestal, dy);
+                double trigger_voltage = fTools.get_voltage(i, datacluster_trigger, pdata.pedestal_trigger, dy);
+                double tr_voltage = fTools.get_voltage(i, datacluster_tr, pdata.pedestal_tr, dy);
+                double tr_trigger_voltage = fTools.get_voltage(i, datacluster_trigger_tr, pdata.pedestal_trigger_tr, dy);
 
                 waveform_voltage.at(i) += voltage;
 
                 if(simple_write_waveforms){
                     wfm->SetBinContent(i, voltage);
-                    //wfm->SetBinError(i, data.stddev);
                     wfm_trig->SetBinContent(i, trigger_voltage);
-                    //wfm_trig->SetBinError(i, data.stddev_trigger);
                 }
 
                 // Peak voltage for upward going TTL pulse, CHESS PMT
-                if(tr_voltage > data.peak_tr_voltage){
-                    data.peak_tr_voltage = tr_voltage;
+                if(tr_voltage > pdata.peak_tr_voltage){
+                    pdata.peak_tr_voltage = tr_voltage;
                     peak_tr_bin = i;
                 }
 
                 // Peak voltage for upward going TTL pulse, trigger PMT
-                if(tr_trigger_voltage > data.peak_tr_voltage_trigger){
-                    data.peak_tr_voltage_trigger = tr_trigger_voltage;
+                if(tr_trigger_voltage > pdata.peak_tr_voltage_trigger){
+                    pdata.peak_tr_voltage_trigger = tr_trigger_voltage;
                     peak_tr_bin_trigger = i;
                 }
 
                 // Peak voltages (minimum) for CHESS PMT
-                if(voltage < data.peak_voltage){
-                    data.peak_voltage = voltage;
+                if(voltage < pdata.peak_voltage){
+                    pdata.peak_voltage = voltage;
                     peak_bin = i;
                 }
 
@@ -352,7 +350,7 @@ void PMTChar::pmt_characterization(char* datafile,
                 if(voltage < voltage_threshold){
                     nsamples_above += 1;
                     if(!crossed){
-                        data.ncrossings+=1;
+                        pdata.ncrossings+=1;
                     }
                     crossed = true;
                 }
@@ -360,13 +358,13 @@ void PMTChar::pmt_characterization(char* datafile,
                     nsamples_above = 0;
                     crossed = false;
                 }
-                if(nsamples_above > data.samples_above_threshold){
-                    data.samples_above_threshold = nsamples_above;
+                if(nsamples_above > pdata.samples_above_threshold){
+                    pdata.samples_above_threshold = nsamples_above;
                 }
 
                 // Peak voltage for trigger PMT
-                if(trigger_voltage < data.peak_voltage_trigger){
-                    data.peak_voltage_trigger = trigger_voltage;
+                if(trigger_voltage < pdata.peak_voltage_trigger){
+                    pdata.peak_voltage_trigger = trigger_voltage;
                     peak_bin_trigger = i;
                 }
             }
@@ -375,69 +373,70 @@ void PMTChar::pmt_characterization(char* datafile,
 
               // Defines a pulse that crosses threshold
               //if(data.peak_voltage >= voltage_threshold) continue;
-              if(data.peak_voltage_trigger >= trigger_voltage_threshold) continue;
+              if(pdata.peak_voltage_trigger >= trigger_voltage_threshold) continue;
 
               int trigger_sample = 0;
               if(CONST_FRAC_TRIGGER){
                   // Constant fraction discriminator applied to trigger PMT
                   trigger_sample = fTools.const_frac(peak_bin_trigger, lookback_trigger,
                                                      datacluster_trigger, dy,
-                                                     data.pedestal_trigger, data.peak_voltage_trigger,
+                                                     pdata.pedestal_trigger,
+                                                     pdata.peak_voltage_trigger,
                                                      const_frac_thresh_trigger);
               }
               else{
                   // Constant threshold discriminator applied to trigger PMT
                   trigger_sample = fTools.const_threshold(peak_bin_trigger, lookback_trigger,
                                                           datacluster_trigger, dy,
-                                                          data.pedestal_trigger,
+                                                          pdata.pedestal_trigger,
                                                           const_thresh_trigger);
               }
 
               // Constant fraction discriminator applied to CHESS PMT waveform
               int sample = fTools.const_frac(peak_bin, lookback,
                                              datacluster, dy,
-                                             data.pedestal,
-                                             data.peak_voltage,
+                                             pdata.pedestal,
+                                             pdata.peak_voltage,
                                              const_frac_thresh);
 
               // Constant fraction discriminiator applied to TTL pulse for CHESS PMT
               int tr_sample = fTools.const_frac_ttl(peak_tr_bin, lookback_trigger,
                                                     datacluster_tr, dy,
-                                                    data.pedestal_tr,
-                                                    data.peak_tr_voltage,
+                                                    pdata.pedestal_tr,
+                                                    pdata.peak_tr_voltage,
                                                     const_frac_thresh);
 
               // Constant fraction discriminiator applied to TTL pulse for trigger PMT
               int tr_trigger_sample = fTools.const_frac_ttl(peak_tr_bin_trigger, lookback_trigger,
                                                             datacluster_trigger_tr, dy,
-                                                            data.pedestal_trigger_tr,
-                                                            data.peak_tr_voltage_trigger,
+                                                            pdata.pedestal_trigger_tr,
+                                                            pdata.peak_tr_voltage_trigger,
                                                             const_frac_thresh);
 
               // Index of the start index + threshold crossing sample
               int index = fmod((start_index[j]+sample),window_length);
               // Apply a linear interpolation between two samples around threshold crossing
               double dt = fTools.interpolate(sample, datacluster,
-                                             data.pedestal, dy,
-                                             data.peak_voltage, cal_pmt,
+                                             pdata.pedestal, dy,
+                                             pdata.peak_voltage, cal_pmt,
                                              index, const_frac_thresh);
               // Convert from sample to time using calibrated information
-              data.time = fCal.get_time(window_length, start_index[j],
-                                        sample-1, cal_pmt);
-              data.time += dt;
+              pdata.time = fCal.get_time(window_length, start_index[j],
+                                         sample-1, cal_pmt);
+              pdata.time += dt;
 
               // Repeat for the CHESS PMT group trigger signal
               int tr_index = fmod((start_index[j]+tr_sample),window_length);
               double dt_tr = fTools.interpolate(tr_sample, datacluster_tr,
-                                                data.pedestal_tr, dy,
-                                                data.peak_tr_voltage, cal_pmt,
+                                                pdata.pedestal_tr, dy,
+                                                pdata.peak_tr_voltage, cal_pmt,
                                                 tr_index, const_frac_thresh);
-              data.time_ttl = fCal.get_time(window_length, start_index[j],
+              pdata.time_ttl = fCal.get_time(window_length, start_index[j],
                                             tr_sample-1, cal_pmt);
-              data.time_ttl += dt_tr;
+              pdata.time_ttl += dt_tr;
 
               // Time difference between CHESS PMT time and TTL pulse
-              data.dt = data.time - data.time_ttl;
+              pdata.dt = pdata.time - pdata.time_ttl;
 
               // Index of the start index + threshold crossing sample (trigger PMT)
               int trigger_index = fmod((start_index_trigger[j]+trigger_sample),window_length);
@@ -446,72 +445,72 @@ void PMTChar::pmt_characterization(char* datafile,
               // Apply a linear interpolation between two samples around threshold crossing
               if(CONST_FRAC_TRIGGER){
                   dt_trig = fTools.interpolate(trigger_sample, datacluster_trigger,
-                                               data.pedestal_trigger, dy,
-                                               data.peak_voltage_trigger, cal_trigger,
+                                               pdata.pedestal_trigger, dy,
+                                               pdata.peak_voltage_trigger, cal_trigger,
                                                trigger_index, const_frac_thresh_trigger);
               }
               else{
                   dt_trig = fTools.interpolate_const(trigger_sample, datacluster_trigger,
-                                                     data.pedestal_trigger, dy,
-                                                     data.peak_voltage_trigger, cal_trigger,
+                                                     pdata.pedestal_trigger, dy,
+                                                     pdata.peak_voltage_trigger, cal_trigger,
                                                      trigger_index, const_thresh_trigger);
               }
 
               // Convert from sample to time using calibrated information
-              data.time_trigger = fCal.get_time(window_length, start_index_trigger[j],
-                                                trigger_sample-1, cal_trigger);
-              data.time_trigger += dt_trig;
+              pdata.time_trigger = fCal.get_time(window_length, start_index_trigger[j],
+                                                 trigger_sample-1, cal_trigger);
+              pdata.time_trigger += dt_trig;
 
               // Repeat for the trigger PMT group trigger signal
               int tr_trigger_index = fmod((start_index_trigger[j]+tr_trigger_sample),window_length);
               double dt_tr_trig = fTools.interpolate(tr_trigger_sample, datacluster_trigger_tr,
-                                                     data.pedestal_trigger_tr, dy,
-                                                     data.peak_tr_voltage_trigger, cal_trigger,
+                                                     pdata.pedestal_trigger_tr, dy,
+                                                     pdata.peak_tr_voltage_trigger, cal_trigger,
                                                      tr_trigger_index, const_frac_thresh);
               // Convert from sample to time using calibrated information
-              data.time_trigger_ttl = fCal.get_time(window_length, start_index_trigger[j],
-                                                    tr_trigger_sample-1, cal_trigger);
-              data.time_trigger_ttl += dt_tr_trig;
+              pdata.time_trigger_ttl = fCal.get_time(window_length, start_index_trigger[j],
+                                                     tr_trigger_sample-1, cal_trigger);
+              pdata.time_trigger_ttl += dt_tr_trig;
 
               // Time difference between trigger time and TTL pulse
-              data.dt_trigger = data.time_trigger - data.time_trigger_ttl;
+              pdata.dt_trigger = pdata.time_trigger - pdata.time_trigger_ttl;
 
               // Ultimately it is the difference in time differences that we use
-              data.deltat = (data.dt - data.dt_trigger);
+              pdata.deltat = (pdata.dt - pdata.dt_trigger);
 
               // Integrate the trigger waveform
-              data.trigger_charge = fTools.get_charge(trigger_sample-integration_samples_back,
-                                                      trigger_sample+integration_samples_forward,
-                                                      datacluster_trigger, data.pedestal_trigger, dy, dx);
+              pdata.trigger_charge = fTools.get_charge(trigger_sample-integration_samples_back,
+                                                       trigger_sample+integration_samples_forward,
+                                                       datacluster_trigger, pdata.pedestal_trigger, dy, dx);
 
-              data.trigger_charge_empty = fTools.get_charge(trigger_sample-integration_samples_back,
-                                                            trigger_sample+integration_samples_forward,
-                                                            datacluster_empty, data.pedestal_empty, dy, dx);
+              pdata.trigger_charge_empty = fTools.get_charge(trigger_sample-integration_samples_back,
+                                                             trigger_sample+integration_samples_forward,
+                                                             datacluster_empty, pdata.pedestal_empty, dy, dx);
 
-              data.charge = fTools.get_charge(peak_bin-integration_samples_back,
-                                              peak_bin+integration_samples_forward,
-                                              datacluster, data.pedestal, dy, dx);
+              pdata.charge = fTools.get_charge(peak_bin-integration_samples_back,
+                                               peak_bin+integration_samples_forward,
+                                               datacluster, pdata.pedestal, dy, dx);
 
-              data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back,
-                                                    peak_bin+integration_samples_forward,
-                                                    datacluster_empty, data.pedestal_empty, dy, dx);
+              pdata.charge_empty = fTools.get_charge(peak_bin-integration_samples_back,
+                                                     peak_bin+integration_samples_forward,
+                                                     datacluster_empty, pdata.pedestal_empty, dy, dx);
 
             }
 
             else{
-              data.charge = fTools.get_charge(peak_bin-integration_samples_back_led,
-                                              peak_bin+integration_samples_forward_led,
-                                              datacluster, data.pedestal, dy, dx);
+              pdata.charge = fTools.get_charge(peak_bin-integration_samples_back_led,
+                                               peak_bin+integration_samples_forward_led,
+                                               datacluster, pdata.pedestal, dy, dx);
 
-              data.charge_empty = fTools.get_charge(peak_bin-integration_samples_back_led,
-                                                    peak_bin+integration_samples_forward_led,
-                                                    datacluster_empty, data.pedestal_empty, dy, dx);
+              pdata.charge_empty = fTools.get_charge(peak_bin-integration_samples_back_led,
+                                                     peak_bin+integration_samples_forward_led,
+                                                     datacluster_empty, pdata.pedestal_empty, dy, dx);
             }
 
             if(simple_write_waveforms){
-                if(data.peak_voltage < voltage_threshold){
-                    wfm->Write();
-                    wfm_trig->Write();
+                if(pdata.peak_voltage < voltage_threshold && pdata.deltat < 40.0){
+                  wfm->Write();
+                  wfm_trig->Write();
                 }
             }
 

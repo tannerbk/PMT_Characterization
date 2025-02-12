@@ -3,7 +3,7 @@ import sys
 
 if __name__=='__main__':
 
-    key = sys.argv[1]
+    key = int(sys.argv[1])
 
     engine = sqlalchemy.create_engine('postgresql://%s:%s@%s:%i/%s' %
                                       ('postgres', 'b33feroni',
@@ -18,5 +18,11 @@ if __name__=='__main__':
     row = result.fetchone()
     keys = result.keys()
 
-    print(row)
+    data = dict(zip(row.keys(), row))
 
+    print("{:<25} {:<10}".format("Name","Value"))
+    print ("------------")
+    for key in data:
+        print("{:<25} {:<10}".format(key,data[key]))
+
+    print ("------------")
